@@ -1,22 +1,50 @@
 import streamlit as st
 from PIL import Image, ImageDraw, ImageFont
-import requests
-import json
-import base64
 from io import BytesIO
 from datetime import datetime
+import base64
 
 # --- 설정 및 상수 ---
-# 한글 폰트 경로 (같은 폴더에 NanumGothic.ttf 파일을 넣어주세요)
-FONT_PATH = "NanumGothic.ttf" 
-# 배경 이미지 경로 (HWP를 이미지로 변환한 파일)
-TEMPLATE_PATH = "background.png"
+FONT_PATH = "NanumGothic.ttf"  # 폰트 파일 경로
+TEMPLATE_PATH = "background.png"  # 배경 이미지 파일 경로
 
-# --- 바로빌 API 설정 (실제 키는 Streamlit Secrets에서 관리 권장) ---
-BAROBILL_API_URL = "https://ws.barobill.co.kr/Fax/FaxService.asmx/SendFax" # 예시 URL (문서 확인 필요)
-# 실제 바로빌 REST API 엔드포인트는 개발 가이드 문서를 확인하여 정확한 URL을 입력해야 합니다.
-# 일반적으로 SOAP을 많이 쓰지만, JSON 지원 여부를 확인해야 합니다. 
-# 여기서는 일반적인 POST 요청 구조로 작성합니다.
+# --- 주소록 데이터 (제공해주신 데이터 반영) ---
+FAX_BOOK = {
+    "직접 입력": "",
+    "김포시 보건소": "031-5186-4129",
+    "인천 강화군": "032-930-3642",
+    "인천 서구": "032-718-0790",
+    "인천시 중구": "032-760-6018",
+    "인천시 동구": "032-770-5709",
+    "인천시 미추홀구": "032-770-5790",
+    "인천시 옹진군": "032-899-3129",
+    "인천시 부평구": "032-509-8290",
+    "인천시 남동구": "032-453-5079",
+    "인천시 계양구": "032-551-5772",
+    "인천 연수구": "032-749-8049",
+    "파주시": "031-940-4889",
+    "파주 운정": "031-820-7309",
+    "부천시": "0502-4002-4214",
+    "부천시 오정구": "032-625-4359",
+    "안양 동안구": "031-8045-6577",
+    "서울 강서구": "02-2620-0507",
+    "서울 영등포": "02-2670-4877",
+    "서울 구로": "02-860-2653",
+    "서울 종로": "02-2148-5840",
+    "서울 서대문": "02-330-1854",
+    "서울 동대문": "02-3299-2643",
+    "서울 마포구": "02-3153-9159",
+    "서울 중구": "02-3396-8910",
+    "서울 양천구": "02-6948-5571",
+    "서울 강남": "02-3423-8903",
+    "서울 용산구": "02-2199-5830",
+    "서울 성동구": "02-2286-7062",
+    "고양 일산서구": "031-976-2040",
+    "고양 일산동구": "031-8075-4885",
+    "고양시 덕양구": "031-968-0217",
+    "군포시": "031-461-5466",
+    "양주시": "0505-041-1924"
+}
 
 def add_text_to_image(draw, text, position, font_size=15, color="black"):
     """이미지의 특정 좌표에 텍스트를 그리는 함수"""
@@ -25,7 +53,7 @@ def add_text_to_image(draw, text, position, font_size=15, color="black"):
     try:
         font = ImageFont.truetype(FONT_PATH, font_size)
     except:
-        font = ImageFont.load_default() # 폰트 파일 없으면 기본 폰트
+        font = ImageFont.load_default()
     
     draw.text(position, str(text), fill=color, font=font)
 
@@ -35,39 +63,26 @@ def create_fax_document(data):
         image = Image.open(TEMPLATE_PATH).convert("RGB")
         draw = ImageDraw.Draw(image)
         
-        # --- 좌표 매핑 (실제 이미지 크기에 맞춰 x, y 수정 필요) ---
-        # 예시 좌표입니다. 실제 background.png 해상도에 맞춰 조정하세요.
+        # --- 좌표 매핑 (background.png에 맞춰 미세 조정 필요) ---
+        add_text_to_image(draw, data['reg_date'], (150, 100)) # 접수일
         
-        # 1. 접수일 (상단)
-        add_text_to_image(draw, data['reg_date'], (150, 100)) # (x, y)
-        
-        # 2. 일시 (년 월 일)
         target_date_str = data['checkup_date'].strftime("%Y년 %m월 %d일")
-        add_text_to_image(draw, target_date_str, (150, 420))
+        add_text_to_image(draw, target_date_str, (150, 420)) # 일시
         
-        # 3. 시간
         time_str = f"{data['start_time'].strftime('%H:%M')} ~ {data['end_time'].strftime('%H:%M')}"
-        add_text_to_image(draw, time_str, (150, 450))
+        add_text_to_image(draw, time_str, (150, 450)) # 시간
         
-        # 4. 장소
-        add_text_to_image(draw, data['location'], (150, 480))
+        add_text_to_image(draw, data['location'], (150, 480)) # 장소
+        add_text_to_image(draw, data['target'], (150, 510)) # 대상
+        add_text_to_image(draw, f"{data['count']}명", (400, 540)) # 인원수
+        add_text_to_image(draw, data['doctor_name'], (450, 650)) # 의사명
         
-        # 5. 대상
-        add_text_to_image(draw, data['target'], (150, 510))
-        
-        # 6. 예상인원 수
-        add_text_to_image(draw, f"{data['count']}명", (400, 540))
-        
-        # 7. 수행인원(의사)
-        add_text_to_image(draw, data['doctor_name'], (450, 650))
-        
-        # 8. 하단 신고일 (년 월 일)
+        # 하단 신고일 (현재 날짜)
         today = datetime.now()
         add_text_to_image(draw, str(today.year), (180, 850))
         add_text_to_image(draw, str(today.month), (240, 850))
         add_text_to_image(draw, str(today.day), (300, 850))
 
-        # PDF로 변환
         pdf_buffer = BytesIO()
         image.save(pdf_buffer, format="PDF", resolution=100.0)
         return pdf_buffer.getvalue()
@@ -77,85 +92,105 @@ def create_fax_document(data):
         return None
 
 def send_fax_barobill(pdf_bytes, receiver_num, sender_num):
-    """바로빌 API를 이용해 팩스 전송"""
-    
-    # API 호출을 위한 인코딩 (Base64)
+    """바로빌 API를 이용해 팩스 전송 (구조 예시)"""
     file_base64 = base64.b64encode(pdf_bytes).decode('utf-8')
     
-    # 바로빌 API 명세에 따른 Payload 구성 (예시)
-    # 주의: 실제 바로빌 키(CertKey, CorpNum 등)는 st.secrets에서 가져와야 함
-    payload = {
-        "CERTKEY": st.secrets["BAROBILL_CERT_KEY"],
-        "CorpNum": st.secrets["BAROBILL_CORP_NUM"],
-        "SenderNum": sender_num,
-        "ReceiverNum": receiver_num,
-        "FileBase64": file_base64, # 또는 파일 업로드 방식에 따라 변경
-        "Subject": "출장건강검진신고서"
-    }
+    # 실제 전송 로직 (secrets 사용)
+    # payload = {
+    #     "CERTKEY": st.secrets["BAROBILL_CERT_KEY"],
+    #     "CorpNum": st.secrets["BAROBILL_CORP_NUM"],
+    #     "SenderNum": sender_num,
+    #     "ReceiverNum": receiver_num,
+    #     "FileBase64": file_base64,
+    #     "Subject": "출장건강검진신고서"
+    # }
+    # requests.post(...) 
     
-    # 실제 구현 시 바로빌의 Python SDK를 쓰거나 REST API 명세에 맞춰 requests.post 사용
-    # 여기서는 구조만 잡습니다.
-    # response = requests.post(BAROBILL_API_URL, json=payload)
-    
-    # 테스트를 위한 가짜 응답
     return True, "전송 성공 (테스트 모드)"
 
-# --- Streamlit UI ---
-st.title("🏥 건강검진 신고서 팩스 자동 발송")
+# --- Streamlit UI 시작 ---
+st.set_page_config(page_title="출장검진 신고서 팩스", layout="wide")
+
+st.title("🏥 출장 건강검진 신고서 자동 팩스")
 
 with st.form("fax_form"):
-    st.subheader("1. 신고 내용 입력")
+    st.subheader("1. 신고서 내용 작성")
     
     col1, col2 = st.columns(2)
     with col1:
-        reg_date = st.date_input("접수일", datetime(2023, 10, 10))
-        checkup_date = st.date_input("검진 일시", datetime(2023, 10, 20))
+        reg_date = st.date_input("접수일", datetime.now())
+        checkup_date = st.date_input("검진 일시", datetime.now())
         start_time = st.time_input("시작 시간", datetime.strptime("07:30", "%H:%M"))
         end_time = st.time_input("종료 시간", datetime.strptime("12:00", "%H:%M"))
     
     with col2:
-        location = st.text_input("장소", "김포시 통진읍 대서명로 49 (1층 직원식당)")
-        target = st.text_input("대상", "사이몬")
+        location = st.text_input("검진 장소", "김포시 통진읍 대서명로 49 (1층 직원식당)")
+        target = st.text_input("검진 대상", "업체명 입력")
         count = st.number_input("예상 인원 수", value=50)
         doctor_name = st.text_input("의사 성명", "유민상")
 
-    st.subheader("2. 발송 정보")
-    sender_fax = st.text_input("발신 팩스번호", "031-987-7777")
-    
-    # 주소록 관리 (딕셔너리로 관리하거나 DB 연동 가능)
-    address_book = {
-        "김포시 보건소": "031-000-0000", # 실제 번호로 수정 필요
-        "테스트용": "000-0000-0000"
-    }
-    receiver_name = st.selectbox("수신처 선택", list(address_book.keys()))
-    receiver_fax = st.text_input("수신 팩스번호", address_book[receiver_name])
+    st.markdown("---")
+    st.subheader("2. 팩스 발송 정보")
 
-    submitted = st.form_submit_button("문서 생성 및 팩스 전송")
-
-if submitted:
-    data = {
-        'reg_date': reg_date,
-        'checkup_date': checkup_date,
-        'start_time': start_time,
-        'end_time': end_time,
-        'location': location,
-        'target': target,
-        'count': count,
-        'doctor_name': doctor_name
-    }
+    # --- 발송처 선택 로직 ---
+    c1, c2 = st.columns([1, 1])
     
-    # 1. 문서 생성
-    pdf_bytes = create_fax_document(data)
+    with c1:
+        # 보건소 선택 드롭다운
+        selected_org = st.selectbox(
+            "수신처(보건소) 선택", 
+            list(FAX_BOOK.keys()), 
+            index=0
+        )
     
-    if pdf_bytes:
-        st.success("문서 이미지가 생성되었습니다.")
-        # 미리보기 제공 (선택사항)
-        st.download_button("생성된 PDF 다운로드", pdf_bytes, "report.pdf")
+    with c2:
+        # 선택된 보건소의 번호를 가져옴
+        prefilled_fax = FAX_BOOK[selected_org]
         
-        # 2. 팩스 전송
-        with st.spinner("팩스 전송 중..."):
-            success, msg = send_fax_barobill(pdf_bytes, receiver_fax, sender_fax)
-            if success:
-                st.success(f"✅ 전송 완료: {msg}")
-            else:
-                st.error(f"❌ 전송 실패: {msg}")
+        # 텍스트 입력창에 미리 채워넣음 (수정 가능)
+        receiver_fax = st.text_input(
+            "수신 팩스번호 (직접 수정 가능)", 
+            value=prefilled_fax,
+            help="목록에서 선택하면 자동 입력되며, 필요 시 직접 숫자를 지우고 다시 입력할 수 있습니다."
+        )
+
+    sender_fax = st.text_input("발신 팩스번호", "031-987-7777")
+
+    st.markdown("<br>", unsafe_allow_html=True)
+    submitted = st.form_submit_button("📄 문서 생성 및 팩스 전송", use_container_width=True)
+
+# --- 폼 제출 후 처리 ---
+if submitted:
+    if not receiver_fax:
+        st.warning("수신 팩스번호를 입력해주세요.")
+    else:
+        data = {
+            'reg_date': reg_date,
+            'checkup_date': checkup_date,
+            'start_time': start_time,
+            'end_time': end_time,
+            'location': location,
+            'target': target,
+            'count': count,
+            'doctor_name': doctor_name
+        }
+        
+        # 1. 문서 생성
+        pdf_bytes = create_fax_document(data)
+        
+        if pdf_bytes:
+            # 2. 결과 화면 분할
+            res_col1, res_col2 = st.columns([1, 1])
+            
+            with res_col1:
+                st.success("✅ 문서 이미지가 생성되었습니다.")
+                st.download_button("📥 생성된 PDF 다운로드", pdf_bytes, "report.pdf")
+            
+            with res_col2:
+                # 3. 팩스 전송 시도
+                with st.spinner(f"🖨️ {receiver_fax}로 팩스 전송 중..."):
+                    success, msg = send_fax_barobill(pdf_bytes, receiver_fax, sender_fax)
+                    if success:
+                        st.info(f"결과: {msg}")
+                    else:
+                        st.error(f"실패: {msg}")
