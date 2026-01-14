@@ -66,7 +66,7 @@ FAX_BOOK = {
     "양주시": "0505-041-1924"
 }
 
-def add_text_to_image(draw, text, position, font_size=24, color="black"):
+def add_text_to_image(draw, text, position, font_size=20, color="black"):
     if not text: return
     try:
         font = ImageFont.truetype(FONT_PATH, font_size)
@@ -86,11 +86,11 @@ def create_report_pdf(data):
         # 2. 내용 입력(위치)
         target_date_str = data['checkup_date'].strftime("%Y년 %m월 %d일")
         #일시
-        add_text_to_image(draw, target_date_str, (320, 515))
+        add_text_to_image(draw, target_date_str, (320, 465))
 
         #시간
         time_str = f"{data['start_time'].strftime('%H:%M')} ~ {data['end_time'].strftime('%H:%M')}"
-        add_text_to_image(draw, time_str, (320, 560))
+        add_text_to_image(draw, time_str, (320, 520))
 
         #주소
         add_text_to_image(draw, data['location'], (770, 515))
@@ -108,11 +108,11 @@ def create_report_pdf(data):
         # 좌표는 배경 이미지의 '년', '월', '일' 글자 바로 앞부분으로 추정하여 잡았습니다.
         today = datetime.now()
         # 년 (900~930 근처)
-        add_text_to_image(draw, str(today.year), (910, 1260), font_size=28)
+        add_text_to_image(draw, str(today.year), (830, 1100), font_size=18)
         # 월 (1030 근처)
-        add_text_to_image(draw, str(today.month), (1030, 1260), font_size=28)
+        add_text_to_image(draw, str(today.month), (980, 1100), font_size=18)
         # 일 (1120 근처)
-        add_text_to_image(draw, str(today.day), (1120, 1260), font_size=28)
+        add_text_to_image(draw, str(today.day), (1070, 1100), font_size=18)
 
         pdf_buffer = BytesIO()
         image.save(pdf_buffer, format="PDF", resolution=150.0)
