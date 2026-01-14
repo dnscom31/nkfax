@@ -83,17 +83,26 @@ def create_report_pdf(data):
         
         # 1. 접수일 입력 부분 삭제 (요청사항)
         
-        # 2. 내용 입력
+        # 2. 내용 입력(위치)
         target_date_str = data['checkup_date'].strftime("%Y년 %m월 %d일")
-        add_text_to_image(draw, target_date_str, (300, 560))
-        
+        #일시
+        add_text_to_image(draw, target_date_str, (320, 515))
+
+        #시간
         time_str = f"{data['start_time'].strftime('%H:%M')} ~ {data['end_time'].strftime('%H:%M')}"
-        add_text_to_image(draw, time_str, (300, 605))
-        
-        add_text_to_image(draw, data['location'], (770, 560))
-        add_text_to_image(draw, data['target'], (300, 645))
-        add_text_to_image(draw, f"{data['count']}명", (900, 645))
-        add_text_to_image(draw, data['doctor_name'], (450, 830))
+        add_text_to_image(draw, time_str, (320, 560))
+
+        #주소
+        add_text_to_image(draw, data['location'], (770, 515))
+
+        #업체명
+        add_text_to_image(draw, data['target'], (320, 560))
+
+        #인원
+        add_text_to_image(draw, f"{data['count']}명", (1000, 560))
+
+        #의사명
+        add_text_to_image(draw, data['doctor_name'], (650, 755))
         
         # 3. 하단 날짜 (유태전 서명 위 '년 월 일' 글자에 맞춤)
         # 좌표는 배경 이미지의 '년', '월', '일' 글자 바로 앞부분으로 추정하여 잡았습니다.
