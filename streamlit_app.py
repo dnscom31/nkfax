@@ -5,13 +5,14 @@ from datetime import datetime
 from pypdf import PdfWriter, PdfReader
 import base64
 import os
-import ftplib # FTP 업로드용 표준 라이브러리
+import ftplib
 from zeep import Client
 
 # --- 설정 및 상수 ---
 FONT_PATH = "NanumGothic.ttf"
-TEMPLATE_PATH = "background.png"
-TEMPLATE_FIX_PATH = "background_fix001.png"
+# 사용자가 업로드한 파일명으로 정확히 수정
+TEMPLATE_PATH = "background-001.png"       
+TEMPLATE_FIX_PATH = "background_fix001-001.png"
 
 # 고정 첨부 파일
 FILE_LICENSE = "개설허가증.pdf"
@@ -25,8 +26,8 @@ DOCTOR_MAP = {
 }
 
 # --- 바로빌 API 설정 ---
-# 테스트용 WSDL: https://testws.baroservice.com/FAX.asmx?WSDL
-# 운영용 WSDL: https://ws.baroservice.com/FAX.asmx?WSDL
+# 테스트용: https://testws.baroservice.com/FAX.asmx?WSDL
+# 운영용: https://ws.baroservice.com/FAX.asmx?WSDL
 BAROBILL_WSDL_URL = "https://testws.baroservice.com/FAX.asmx?WSDL"
 
 # --- 주소록 데이터 ---
@@ -67,7 +68,8 @@ FAX_BOOK = {
     "양주시": "0505-041-1924"
 }
 
-def add_text_to_image(draw, text, position, font_size=15, color="black"):
+def add_text_to_image(draw, text, position, font_size=24, color="black"):
+    """이미지의 특정 좌표에 텍스트를 그리는 함수"""
     if not text: return
     try:
         font = ImageFont.truetype(FONT_PATH, font_size)
@@ -76,69 +78,122 @@ def add_text_to_image(draw, text, position, font_size=15, color="black"):
     draw.text(position, str(text), fill=color, font=font)
 
 def create_report_pdf(data):
-    """[기존] 신고서 표지 생성"""
+    """[기존] 신고서 표지 생성 (좌표 수정됨)"""
     try:
         image = Image.open(TEMPLATE_PATH).convert("RGB")
+        
+        # [중요] 이미지를 표준 A4 픽셀 크기(1240x1754)로 강제 조정
+        # 이렇게 해야 좌표가 밀리지 않습니다.
+        target_size = (1240, 1754) 
+        image = image.resize(target_size) 
+        
         draw = ImageDraw.Draw(image)
         
-        add_text_to_image(draw, data['reg_date'], (150, 100))
-        target_date_str = data['checkup_date'].strftime("%Y년 %m월 %d일")
-        add_text_to_image(draw, target_date_str, (150, 420))
-        time_str = f"{data['start_time'].strftime('%H:%M')} ~ {data['end_time'].strftime('%H:%M')}"
-        add_text_to_image(draw, time_str, (150, 450))
-        add_text_to_image(draw, data['location'], (150, 480))
-        add_text_to_image(draw, data['target'], (150, 510))
-        add_text_to_image(draw, f"{data['count']}명", (400, 540))
-        add_text_to_image(draw, data['doctor_name'], (450, 650))
+        # --- 좌표 재설정 (1240x1754 기준) ---
         
+        # 1. 접수일 (상단 회색박스 접수일 칸)
+        add_text_to_image(draw, data['reg_date'], (380, 135)) 
+        
+        # 2. 일시 (중간 테이블)
+        target_date_str = data['checkup_date'].strftime("%Y년 %m월 %d일")
+        add_text_to_image(draw, target_date_str, (300, 560))
+        
+        # 3. 시간
+        time_str = f"{data['start_time'].strftime('%H:%M')} ~ {data['end_time'].strftime('%H:%M')}"
+        add_text_to_image(draw, time_str, (300, 605))
+        
+        # 4. 장소 (오른쪽 칸)
+        add_text_to_image(draw, data['location'], (770, 560))
+        
+        # 5. 대상
+        add_text_to_image(draw, data['target'], (300, 645))
+        
+        # 6. 예상인원 수 (오른쪽 칸)
+        add_text_to_image(draw, f"{data['count']}명", (900, 645))
+        
+        # 7. 의사 성명 (수행인원 표 내부)
+        # '의사' 글자 옆 빈칸 좌표 추정
+        add_text_to_image(draw, data['doctor_name'], (450, 830))
+        
+        # 8. 하단 서명란 날짜
         today = datetime.now()
-        add_text_to_image(draw, str(today.year), (180, 850))
-        add_text_to_image(draw, str(today.month), (240, 850))
-        add_text_to_image(draw, str(today.day), (300, 850))
+        add_text_to_image(draw, str(today.year), (850, 1150), font_size=30)
+        add_text_to_image(draw, str(today.month), (980, 1150), font_size=30)
+        add_text_to_image(draw, str(today.day), (1070, 1150), font_size=30)
+        
+        # 9. 신고인 이름 (하단 서명 옆)
+        # 이미 이름이 인쇄되어 있다면 이 부분은 주석 처리하세요.
+        # add_text_to_image(draw, "유태전", (900, 1350))
 
         pdf_buffer = BytesIO()
-        image.save(pdf_buffer, format="PDF", resolution=100.0)
+        image.save(pdf_buffer, format="PDF", resolution=150.0) # 150 DPI 기준
         return pdf_buffer.getvalue()
     except Exception as e:
         st.error(f"신고서 표지 생성 오류: {e}")
         return None
 
 def create_fix_pdf(data):
-    """[신규] 변경/취소 신청서 생성"""
+    """[신규] 변경/취소 신청서 생성 (좌표 수정됨)"""
     try:
         image = Image.open(TEMPLATE_FIX_PATH).convert("RGB")
+        
+        # [중요] 표준 사이즈 리사이징
+        target_size = (1240, 1754)
+        image = image.resize(target_size)
+        
         draw = ImageDraw.Draw(image)
         
+        # 1. 상단 체크박스 (변경 vs 취소)
+        # 제목 옆 [ ] 괄호 위치 추정
         if data['type'] == 'change':
-            add_text_to_image(draw, "V", (550, 85), font_size=20, color="red")
+            add_text_to_image(draw, "V", (715, 85), font_size=30, color="red") # 변경 체크
         else:
-            add_text_to_image(draw, "V", (550, 130), font_size=20, color="red")
+            add_text_to_image(draw, "V", (715, 125), font_size=30, color="red") # 취소 체크
 
-        row_start_y = 950
-        row_gap = 100
-        col_before_x = 350
-        col_after_x = 900
+        # 2. 변경 내용 테이블 입력
+        # 열 좌표 (X축)
+        col_before_x = 400  # 변경 전 열
+        col_after_x = 850   # 변경 후 열
+        
+        # 행 좌표 (Y축) - 제공해주신 이미지의 칸 간격에 맞춰 대략 설정
+        # 일시, 장소, 대상, 인원, 인력, 항목, 기타 순서
+        rows_y = {
+            'date': 650,    # 일시
+            'place': 730,   # 장소
+            'target': 810,  # 대상
+            'count': 890,   # 인원수
+            'staff': 970,   # 수행인력
+            'items': 1050,  # 실시항목
+            'etc': 1130     # 기타
+        }
 
+        # items list
         items = ['date', 'place', 'target', 'count', 'staff', 'items', 'etc']
         
-        for i, item in enumerate(items):
-            y_pos = row_start_y + (i * row_gap)
+        for item in items:
+            y_pos = rows_y[item]
             before_val = data.get(f'{item}_before', '')
             after_val = data.get(f'{item}_after', '')
             
-            add_text_to_image(draw, before_val, (col_before_x, y_pos))
-            add_text_to_image(draw, after_val, (col_after_x, y_pos))
+            # 값이 있을 때만 그림
+            if before_val:
+                add_text_to_image(draw, before_val, (col_before_x, y_pos))
+            if after_val:
+                add_text_to_image(draw, after_val, (col_after_x, y_pos))
 
+        # 3. 취소 사유
         if data['type'] == 'cancel':
-            add_text_to_image(draw, data['cancel_reason'], (300, 1750))
+            # 하단 취소사유 박스
+            add_text_to_image(draw, data['cancel_reason'], (300, 1300))
 
+        # 4. 하단 날짜 (우측 하단)
         today = datetime.now()
-        add_text_to_image(draw, str(today.year), (1200, 2200))
-        add_text_to_image(draw, str(today.month), (1350, 2200))
-        add_text_to_image(draw, str(today.day), (1450, 2200))
+        add_text_to_image(draw, str(today.year), (980, 1530))
+        add_text_to_image(draw, str(today.month), (1080, 1530))
+        add_text_to_image(draw, str(today.day), (1150, 1530))
 
         pdf_buffer = BytesIO()
-        image.save(pdf_buffer, format="PDF", resolution=100.0)
+        image.save(pdf_buffer, format="PDF", resolution=150.0)
         return pdf_buffer.getvalue()
 
     except Exception as e:
@@ -170,41 +225,26 @@ def merge_documents(cover_pdf_bytes, doctor_name):
         st.error(f"문서 병합 오류: {e}")
         return None
 
-# =========================================================
-# FTP 업로드 로직 (가이드 반영: Passive Mode & 특정 포트)
-# =========================================================
+# FTP 업로드
 def upload_file_to_ftp(pdf_bytes, filename):
-    """생성된 PDF를 바로빌 FTP 서버에 업로드 (Passive Mode)"""
     try:
         ftp_host = st.secrets["BAROBILL_FTP_HOST"]
-        ftp_port = int(st.secrets["BAROBILL_FTP_PORT"]) # 9030 or 9031
+        ftp_port = int(st.secrets["BAROBILL_FTP_PORT"])
         ftp_id = st.secrets["BAROBILL_FTP_ID"]
         ftp_pwd = st.secrets["BAROBILL_FTP_PWD"]
         
-        # 1. FTP 객체 생성
         ftp = ftplib.FTP()
-        
-        # 2. 특정 포트로 접속 (connect 사용)
         ftp.connect(ftp_host, ftp_port)
-        
-        # 3. 로그인
         ftp.login(user=ftp_id, passwd=ftp_pwd)
-        
-        # 4. Passive Mode 설정 (가이드 준수: 필수 사항)
         ftp.set_pasv(True)
-        
-        # 5. 바이너리 모드로 파일 업로드
         ftp.storbinary(f"STOR {filename}", BytesIO(pdf_bytes))
-        
-        # 6. 종료
         ftp.quit()
-            
         return True, "FTP 업로드 성공"
     except Exception as e:
         return False, f"FTP 업로드 실패: {e}"
 
+# 팩스 전송 요청
 def send_fax_from_ftp_real(filename, receiver_num, sender_num):
-    """FTP에 업로드된 파일을 바로빌 API(SendFaxFromFTP)를 통해 전송 요청"""
     try:
         if "BAROBILL_CERT_KEY" not in st.secrets:
             return False, "API 키(Secrets)가 설정되지 않았습니다."
@@ -215,17 +255,16 @@ def send_fax_from_ftp_real(filename, receiver_num, sender_num):
 
         client = Client(BAROBILL_WSDL_URL)
         
-        # SendFaxFromFTP 호출
         result = client.service.SendFaxFromFTP(
             CERTKEY=cert_key,
             CorpNum=corp_num,
             SenderID=sender_id,
-            FileName=filename,          # FTP에 올린 파일명 그대로 사용
+            FileName=filename,
             FromNumber=sender_num.replace("-", ""),
             ToNumber=receiver_num.replace("-", ""),
             ReceiveCorp="보건소",
             ReceiveName="담당자",
-            SendDT="",                  # 빈값이면 즉시 전송
+            SendDT="",
             RefKey=""
         )
         
@@ -233,13 +272,10 @@ def send_fax_from_ftp_real(filename, receiver_num, sender_num):
             return False, f"전송 실패 (에러코드: {result})"
         else:
             return True, f"전송 접수 완료 (접수번호: {result})"
-
     except Exception as e:
         return False, f"API 통신 오류: {str(e)}"
 
-# =========================================================
-# UI 메인
-# =========================================================
+# --- UI 메인 ---
 st.set_page_config(page_title="출장검진 팩스 시스템", layout="wide")
 st.title("🏥 뉴고려병원 출장검진 팩스 시스템")
 
@@ -287,12 +323,10 @@ with tab1:
                 merged_bytes = merge_documents(cover_bytes, doctor_name)
                 if merged_bytes:
                     st.success("1. 문서 생성 완료")
-                    
-                    # 파일명 생성 (영문/숫자 조합 권장)
                     timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
                     filename = f"Report_{timestamp}.pdf"
                     
-                    with st.spinner(f"2. 바로빌 FTP 업로드 중... (파일명: {filename})"):
+                    with st.spinner(f"2. FTP 업로드 중... ({filename})"):
                         ftp_success, ftp_msg = upload_file_to_ftp(merged_bytes, filename)
                     
                     if ftp_success:
@@ -379,7 +413,7 @@ with tab2:
                 timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
                 filename = f"FixRequest_{timestamp}.pdf"
                 
-                with st.spinner(f"FTP 업로드 중... (파일명: {filename})"):
+                with st.spinner(f"FTP 업로드 중... ({filename})"):
                     ftp_success, ftp_msg = upload_file_to_ftp(fix_pdf_bytes, filename)
                 
                 if ftp_success:
