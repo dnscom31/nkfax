@@ -10,8 +10,7 @@ from zeep import Client
 
 # --- 설정 및 상수 ---
 FONT_PATH = "NanumGothic.ttf"
-# 사용자가 업로드한 파일명으로 정확히 수정
-TEMPLATE_PATH = "background-001.png"       
+TEMPLATE_PATH = "background-001.png"
 TEMPLATE_FIX_PATH = "background_fix001-001.png"
 
 # 고정 첨부 파일
@@ -26,8 +25,8 @@ DOCTOR_MAP = {
 }
 
 # --- 바로빌 API 설정 ---
-# 테스트용: https://testws.baroservice.com/FAX.asmx?WSDL
-# 운영용: https://ws.baroservice.com/FAX.asmx?WSDL
+# 테스트: https://testws.baroservice.com/FAX.asmx?WSDL
+# 운영: https://ws.baroservice.com/FAX.asmx?WSDL
 BAROBILL_WSDL_URL = "https://testws.baroservice.com/FAX.asmx?WSDL"
 
 # --- 주소록 데이터 ---
@@ -69,7 +68,6 @@ FAX_BOOK = {
 }
 
 def add_text_to_image(draw, text, position, font_size=24, color="black"):
-    """이미지의 특정 좌표에 텍스트를 그리는 함수"""
     if not text: return
     try:
         font = ImageFont.truetype(FONT_PATH, font_size)
@@ -78,115 +76,62 @@ def add_text_to_image(draw, text, position, font_size=24, color="black"):
     draw.text(position, str(text), fill=color, font=font)
 
 def create_report_pdf(data):
-    """[기존] 신고서 표지 생성 (좌표 수정됨)"""
+    """신고서 표지 생성 (A4 리사이징 포함)"""
     try:
         image = Image.open(TEMPLATE_PATH).convert("RGB")
-        
-        # [중요] 이미지를 표준 A4 픽셀 크기(1240x1754)로 강제 조정
-        # 이렇게 해야 좌표가 밀리지 않습니다.
-        target_size = (1240, 1754) 
-        image = image.resize(target_size) 
-        
+        image = image.resize((1240, 1754)) # 표준 A4 픽셀
         draw = ImageDraw.Draw(image)
         
-        # --- 좌표 재설정 (1240x1754 기준) ---
-        
-        # 1. 접수일 (상단 회색박스 접수일 칸)
+        # 좌표 설정
         add_text_to_image(draw, data['reg_date'], (380, 135)) 
-        
-        # 2. 일시 (중간 테이블)
         target_date_str = data['checkup_date'].strftime("%Y년 %m월 %d일")
         add_text_to_image(draw, target_date_str, (300, 560))
-        
-        # 3. 시간
         time_str = f"{data['start_time'].strftime('%H:%M')} ~ {data['end_time'].strftime('%H:%M')}"
         add_text_to_image(draw, time_str, (300, 605))
-        
-        # 4. 장소 (오른쪽 칸)
         add_text_to_image(draw, data['location'], (770, 560))
-        
-        # 5. 대상
         add_text_to_image(draw, data['target'], (300, 645))
-        
-        # 6. 예상인원 수 (오른쪽 칸)
         add_text_to_image(draw, f"{data['count']}명", (900, 645))
-        
-        # 7. 의사 성명 (수행인원 표 내부)
-        # '의사' 글자 옆 빈칸 좌표 추정
         add_text_to_image(draw, data['doctor_name'], (450, 830))
         
-        # 8. 하단 서명란 날짜
         today = datetime.now()
         add_text_to_image(draw, str(today.year), (850, 1150), font_size=30)
         add_text_to_image(draw, str(today.month), (980, 1150), font_size=30)
         add_text_to_image(draw, str(today.day), (1070, 1150), font_size=30)
-        
-        # 9. 신고인 이름 (하단 서명 옆)
-        # 이미 이름이 인쇄되어 있다면 이 부분은 주석 처리하세요.
-        # add_text_to_image(draw, "유태전", (900, 1350))
 
         pdf_buffer = BytesIO()
-        image.save(pdf_buffer, format="PDF", resolution=150.0) # 150 DPI 기준
+        image.save(pdf_buffer, format="PDF", resolution=150.0)
         return pdf_buffer.getvalue()
     except Exception as e:
         st.error(f"신고서 표지 생성 오류: {e}")
         return None
 
 def create_fix_pdf(data):
-    """[신규] 변경/취소 신청서 생성 (좌표 수정됨)"""
+    """변경/취소 신청서 생성 (A4 리사이징 포함)"""
     try:
         image = Image.open(TEMPLATE_FIX_PATH).convert("RGB")
-        
-        # [중요] 표준 사이즈 리사이징
-        target_size = (1240, 1754)
-        image = image.resize(target_size)
-        
+        image = image.resize((1240, 1754))
         draw = ImageDraw.Draw(image)
         
-        # 1. 상단 체크박스 (변경 vs 취소)
-        # 제목 옆 [ ] 괄호 위치 추정
         if data['type'] == 'change':
-            add_text_to_image(draw, "V", (715, 85), font_size=30, color="red") # 변경 체크
+            add_text_to_image(draw, "V", (715, 85), font_size=30, color="red")
         else:
-            add_text_to_image(draw, "V", (715, 125), font_size=30, color="red") # 취소 체크
+            add_text_to_image(draw, "V", (715, 125), font_size=30, color="red")
 
-        # 2. 변경 내용 테이블 입력
-        # 열 좌표 (X축)
-        col_before_x = 400  # 변경 전 열
-        col_after_x = 850   # 변경 후 열
-        
-        # 행 좌표 (Y축) - 제공해주신 이미지의 칸 간격에 맞춰 대략 설정
-        # 일시, 장소, 대상, 인원, 인력, 항목, 기타 순서
-        rows_y = {
-            'date': 650,    # 일시
-            'place': 730,   # 장소
-            'target': 810,  # 대상
-            'count': 890,   # 인원수
-            'staff': 970,   # 수행인력
-            'items': 1050,  # 실시항목
-            'etc': 1130     # 기타
-        }
-
-        # items list
+        col_before_x = 400
+        col_after_x = 850
+        rows_y = {'date': 650, 'place': 730, 'target': 810, 'count': 890, 'staff': 970, 'items': 1050, 'etc': 1130}
         items = ['date', 'place', 'target', 'count', 'staff', 'items', 'etc']
         
         for item in items:
             y_pos = rows_y[item]
             before_val = data.get(f'{item}_before', '')
             after_val = data.get(f'{item}_after', '')
-            
-            # 값이 있을 때만 그림
-            if before_val:
-                add_text_to_image(draw, before_val, (col_before_x, y_pos))
-            if after_val:
-                add_text_to_image(draw, after_val, (col_after_x, y_pos))
+            if before_val: add_text_to_image(draw, before_val, (col_before_x, y_pos))
+            if after_val: add_text_to_image(draw, after_val, (col_after_x, y_pos))
 
-        # 3. 취소 사유
         if data['type'] == 'cancel':
-            # 하단 취소사유 박스
             add_text_to_image(draw, data['cancel_reason'], (300, 1300))
 
-        # 4. 하단 날짜 (우측 하단)
         today = datetime.now()
         add_text_to_image(draw, str(today.year), (980, 1530))
         add_text_to_image(draw, str(today.month), (1080, 1530))
@@ -195,7 +140,6 @@ def create_fix_pdf(data):
         pdf_buffer = BytesIO()
         image.save(pdf_buffer, format="PDF", resolution=150.0)
         return pdf_buffer.getvalue()
-
     except Exception as e:
         st.error(f"변경신청서 생성 오류: {e}")
         return None
@@ -225,8 +169,8 @@ def merge_documents(cover_pdf_bytes, doctor_name):
         st.error(f"문서 병합 오류: {e}")
         return None
 
-# FTP 업로드
 def upload_file_to_ftp(pdf_bytes, filename):
+    """FTP 업로드 (Passive Mode)"""
     try:
         ftp_host = st.secrets["BAROBILL_FTP_HOST"]
         ftp_port = int(st.secrets["BAROBILL_FTP_PORT"])
@@ -243,9 +187,8 @@ def upload_file_to_ftp(pdf_bytes, filename):
     except Exception as e:
         return False, f"FTP 업로드 실패: {e}"
 
-# 팩스 전송 요청
 def send_fax_from_ftp_real(filename, receiver_num, sender_num):
-    """FTP에 업로드된 파일을 바로빌 API(SendFaxFromFTP)를 통해 전송 요청"""
+    """바로빌 API 전송 요청"""
     try:
         if "BAROBILL_CERT_KEY" not in st.secrets:
             return False, "API 키(Secrets)가 설정되지 않았습니다."
@@ -256,7 +199,6 @@ def send_fax_from_ftp_real(filename, receiver_num, sender_num):
 
         client = Client(BAROBILL_WSDL_URL)
         
-        # SendFaxFromFTP 호출
         result = client.service.SendFaxFromFTP(
             CERTKEY=cert_key,
             CorpNum=corp_num,
@@ -270,16 +212,11 @@ def send_fax_from_ftp_real(filename, receiver_num, sender_num):
             RefKey=""
         )
         
-        # [수정된 부분] 결과값 처리 로직 개선
-        # 바로빌은 실패 시에만 음수 숫자 문자열(예: "-10001")을 반환하고,
-        # 성공 시에는 "IBT_..." 같은 문자열 접수번호를 반환합니다.
-        
+        # 결과 처리 (숫자가 아니면 성공)
         try:
-            # 1. 숫자로 변환을 시도해봅니다. (에러 코드인지 확인)
             if int(result) < 0:
                 return False, f"전송 실패 (에러코드: {result})"
         except ValueError:
-            # 2. 숫자로 변환되지 않으면(IBT_... 등) 성공한 것입니다.
             pass
             
         return True, f"전송 접수 완료 (접수번호: {result})"
@@ -291,9 +228,17 @@ def send_fax_from_ftp_real(filename, receiver_num, sender_num):
 st.set_page_config(page_title="출장검진 팩스 시스템", layout="wide")
 st.title("🏥 뉴고려병원 출장검진 팩스 시스템")
 
+# 세션 스테이트 초기화 (미리보기 및 전송 데이터 저장용)
+if 't1_pdf' not in st.session_state: st.session_state['t1_pdf'] = None
+if 't1_meta' not in st.session_state: st.session_state['t1_meta'] = {}
+if 't2_pdf' not in st.session_state: st.session_state['t2_pdf'] = None
+if 't2_meta' not in st.session_state: st.session_state['t2_meta'] = {}
+
 tab1, tab2 = st.tabs(["📑 출장검진 신고서", "📝 변경/취소 신청서"])
 
+# ==========================================
 # 탭 1: 기존 출장검진 신고서
+# ==========================================
 with tab1:
     with st.form("report_form"):
         st.subheader("1. 신고서 내용 작성")
@@ -318,9 +263,11 @@ with tab1:
             receiver_fax = st.text_input("수신 팩스번호", value=FAX_BOOK[selected_org], key="tab1_fax")
         sender_fax = st.text_input("발신 팩스번호", "031-987-7777", key="tab1_sender")
         
-        submit_report = st.form_submit_button("통합 문서 생성 및 전송")
+        # 버튼 이름 변경: 전송 -> 미리보기 생성
+        submit_preview = st.form_submit_button("1단계: 문서 생성 및 미리보기")
 
-    if submit_report:
+    # 1단계: 문서 생성 (전송 X)
+    if submit_preview:
         if not receiver_fax:
             st.warning("수신번호를 입력하세요.")
         else:
@@ -334,22 +281,55 @@ with tab1:
             if cover_bytes:
                 merged_bytes = merge_documents(cover_bytes, doctor_name)
                 if merged_bytes:
-                    st.success("1. 문서 생성 완료")
-                    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-                    filename = f"Report_{timestamp}.pdf"
-                    
-                    with st.spinner(f"2. FTP 업로드 중... ({filename})"):
-                        ftp_success, ftp_msg = upload_file_to_ftp(merged_bytes, filename)
-                    
-                    if ftp_success:
-                        with st.spinner("3. 팩스 전송 요청 중..."):
-                            success, msg = send_fax_from_ftp_real(filename, receiver_fax, sender_fax)
-                            if success: st.success(msg)
-                            else: st.error(msg)
-                    else:
-                        st.error(ftp_msg)
+                    # 세션에 저장 (전송 버튼 누를 때 사용)
+                    st.session_state['t1_pdf'] = merged_bytes
+                    st.session_state['t1_meta'] = {
+                        'receiver': receiver_fax,
+                        'sender': sender_fax,
+                        'filename': f"Report_{datetime.now().strftime('%Y%m%d%H%M%S')}.pdf"
+                    }
+                    st.success("문서가 생성되었습니다. 아래에서 내용을 확인하고 전송하세요.")
+    
+    # 2단계: 미리보기 및 실제 전송
+    if st.session_state['t1_pdf']:
+        st.markdown("### 3. 미리보기 및 전송")
+        col_view, col_send = st.columns([1, 1])
+        
+        with col_view:
+            st.info("문서를 다운로드하여 내용을 확인해 주세요.")
+            st.download_button(
+                label="📥 생성된 PDF 다운로드 (미리보기)",
+                data=st.session_state['t1_pdf'],
+                file_name=st.session_state['t1_meta']['filename'],
+                mime="application/pdf",
+                use_container_width=True
+            )
+        
+        with col_send:
+            st.warning("내용에 이상이 없으면 전송 버튼을 눌러주세요.")
+            if st.button("🚀 팩스 전송하기 (최종)", key="send_btn_tab1", use_container_width=True):
+                meta = st.session_state['t1_meta']
+                pdf_bytes = st.session_state['t1_pdf']
+                
+                with st.spinner(f"FTP 업로드 중... ({meta['filename']})"):
+                    ftp_success, ftp_msg = upload_file_to_ftp(pdf_bytes, meta['filename'])
+                
+                if ftp_success:
+                    with st.spinner(f"{meta['receiver']}로 팩스 전송 요청 중..."):
+                        success, msg = send_fax_from_ftp_real(meta['filename'], meta['receiver'], meta['sender'])
+                        if success:
+                            st.balloons()
+                            st.success(msg)
+                            # 전송 후 데이터 초기화 (선택사항)
+                            # st.session_state['t1_pdf'] = None
+                        else:
+                            st.error(msg)
+                else:
+                    st.error(ftp_msg)
 
+# ==========================================
 # 탭 2: 변경/취소 신청서
+# ==========================================
 with tab2:
     st.info("💡 변경 사항이 있는 항목만 입력하세요.")
     
@@ -401,9 +381,11 @@ with tab2:
             fix_fax = st.text_input("수신 팩스번호", value=FAX_BOOK[fix_org], key="tab2_fax")
         fix_sender = st.text_input("발신 팩스번호", "031-987-7777", key="tab2_sender")
 
-        submit_fix = st.form_submit_button("변경/취소 신청서 생성 및 전송")
+        # 버튼 이름 변경
+        submit_fix_preview = st.form_submit_button("1단계: 문서 생성 및 미리보기")
 
-    if submit_fix:
+    # 1단계: 문서 생성
+    if submit_fix_preview:
         if not fix_fax:
             st.warning("수신번호를 입력하세요.")
         else:
@@ -422,16 +404,45 @@ with tab2:
             fix_pdf_bytes = create_fix_pdf(fix_data)
             
             if fix_pdf_bytes:
-                timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-                filename = f"FixRequest_{timestamp}.pdf"
+                st.session_state['t2_pdf'] = fix_pdf_bytes
+                st.session_state['t2_meta'] = {
+                    'receiver': fix_fax,
+                    'sender': fix_sender,
+                    'filename': f"FixRequest_{datetime.now().strftime('%Y%m%d%H%M%S')}.pdf"
+                }
+                st.success("문서가 생성되었습니다. 아래에서 내용을 확인하고 전송하세요.")
+
+    # 2단계: 미리보기 및 실제 전송
+    if st.session_state['t2_pdf']:
+        st.markdown("### 3. 미리보기 및 전송")
+        col_view2, col_send2 = st.columns([1, 1])
+        
+        with col_view2:
+            st.info("문서를 다운로드하여 내용을 확인해 주세요.")
+            st.download_button(
+                label="📥 생성된 PDF 다운로드 (미리보기)",
+                data=st.session_state['t2_pdf'],
+                file_name=st.session_state['t2_meta']['filename'],
+                mime="application/pdf",
+                use_container_width=True
+            )
+        
+        with col_send2:
+            st.warning("내용에 이상이 없으면 전송 버튼을 눌러주세요.")
+            if st.button("🚀 팩스 전송하기 (최종)", key="send_btn_tab2", use_container_width=True):
+                meta = st.session_state['t2_meta']
+                pdf_bytes = st.session_state['t2_pdf']
                 
-                with st.spinner(f"FTP 업로드 중... ({filename})"):
-                    ftp_success, ftp_msg = upload_file_to_ftp(fix_pdf_bytes, filename)
+                with st.spinner(f"FTP 업로드 중... ({meta['filename']})"):
+                    ftp_success, ftp_msg = upload_file_to_ftp(pdf_bytes, meta['filename'])
                 
                 if ftp_success:
-                    with st.spinner("팩스 전송 요청 중..."):
-                        success, msg = send_fax_from_ftp_real(filename, fix_fax, fix_sender)
-                        if success: st.success(msg)
-                        else: st.error(msg)
+                    with st.spinner(f"{meta['receiver']}로 팩스 전송 요청 중..."):
+                        success, msg = send_fax_from_ftp_real(meta['filename'], meta['receiver'], meta['sender'])
+                        if success:
+                            st.balloons()
+                            st.success(msg)
+                        else:
+                            st.error(msg)
                 else:
                     st.error(ftp_msg)
