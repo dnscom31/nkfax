@@ -245,6 +245,7 @@ def upload_file_to_ftp(pdf_bytes, filename):
 
 # 팩스 전송 요청
 def send_fax_from_ftp_real(filename, receiver_num, sender_num):
+    """FTP에 업로드된 파일을 바로빌 API(SendFaxFromFTP)를 통해 전송 요청"""
     try:
         if "BAROBILL_CERT_KEY" not in st.secrets:
             return False, "API 키(Secrets)가 설정되지 않았습니다."
@@ -255,6 +256,7 @@ def send_fax_from_ftp_real(filename, receiver_num, sender_num):
 
         client = Client(BAROBILL_WSDL_URL)
         
+        # SendFaxFromFTP 호출
         result = client.service.SendFaxFromFTP(
             CERTKEY=cert_key,
             CorpNum=corp_num,
@@ -268,10 +270,20 @@ def send_fax_from_ftp_real(filename, receiver_num, sender_num):
             RefKey=""
         )
         
-        if int(result) < 0:
-            return False, f"전송 실패 (에러코드: {result})"
-        else:
-            return True, f"전송 접수 완료 (접수번호: {result})"
+        # [수정된 부분] 결과값 처리 로직 개선
+        # 바로빌은 실패 시에만 음수 숫자 문자열(예: "-10001")을 반환하고,
+        # 성공 시에는 "IBT_..." 같은 문자열 접수번호를 반환합니다.
+        
+        try:
+            # 1. 숫자로 변환을 시도해봅니다. (에러 코드인지 확인)
+            if int(result) < 0:
+                return False, f"전송 실패 (에러코드: {result})"
+        except ValueError:
+            # 2. 숫자로 변환되지 않으면(IBT_... 등) 성공한 것입니다.
+            pass
+            
+        return True, f"전송 접수 완료 (접수번호: {result})"
+
     except Exception as e:
         return False, f"API 통신 오류: {str(e)}"
 
