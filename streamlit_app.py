@@ -5,11 +5,12 @@ from datetime import datetime
 from pypdf import PdfWriter, PdfReader
 import base64
 import os
-from zeep import Client # 바로빌 SOAP 통신 라이브러리
+from zeep import Client
 
 # --- 설정 및 상수 ---
 FONT_PATH = "NanumGothic.ttf"
-TEMPLATE_PATH = "background.png"
+TEMPLATE_PATH = "background.png"       # 기존 신고서 배경
+TEMPLATE_FIX_PATH = "background_fix001.png" # 새로 추가된 변경/취소 배경
 
 # 고정 첨부 파일
 FILE_LICENSE = "개설허가증.pdf"
@@ -22,10 +23,8 @@ DOCTOR_MAP = {
     "안형숙": "안형숙.pdf"
 }
 
-# --- 바로빌 API 설정 (운영 전환 시 URL 변경 필요) ---
-# 테스트 서버: https://testws.baroservice.com/FAX.asmx?WSDL
-# 운영 서버: https://ws.baroservice.com/FAX.asmx?WSDL
-BAROBILL_WSDL_URL = "https://ws.baroservice.com/FAX.asmx?WSDL" 
+# --- 바로빌 API 설정 ---
+BAROBILL_WSDL_URL = "https://ws.baroservice.com/FAX.asmx?WSDL"
 
 # --- 주소록 데이터 ---
 FAX_BOOK = {
@@ -73,13 +72,13 @@ def add_text_to_image(draw, text, position, font_size=15, color="black"):
         font = ImageFont.load_default()
     draw.text(position, str(text), fill=color, font=font)
 
-def create_cover_pdf(data):
-    """신고서 표지(1페이지) 생성"""
+def create_report_pdf(data):
+    """[기존] 신고서 표지 생성"""
     try:
         image = Image.open(TEMPLATE_PATH).convert("RGB")
         draw = ImageDraw.Draw(image)
         
-        # 좌표 매핑
+        # 좌표 매핑 (기존)
         add_text_to_image(draw, data['reg_date'], (150, 100))
         target_date_str = data['checkup_date'].strftime("%Y년 %m월 %d일")
         add_text_to_image(draw, target_date_str, (150, 420))
@@ -99,27 +98,81 @@ def create_cover_pdf(data):
         image.save(pdf_buffer, format="PDF", resolution=100.0)
         return pdf_buffer.getvalue()
     except Exception as e:
-        st.error(f"표지 생성 오류: {e}")
+        st.error(f"신고서 표지 생성 오류: {e}")
+        return None
+
+def create_fix_pdf(data):
+    """[신규] 변경/취소 신청서 생성"""
+    try:
+        image = Image.open(TEMPLATE_FIX_PATH).convert("RGB")
+        draw = ImageDraw.Draw(image)
+        
+        # 1. 상단 체크박스 (변경 vs 취소)
+        # 좌표는 background_fix001.png의 실제 크기에 따라 조정 필요
+        # 예시: 변경[550, 85], 취소[550, 130] -> 실제 이미지 확인 후 수정 요망
+        if data['type'] == 'change':
+            add_text_to_image(draw, "V", (550, 85), font_size=20, color="red") # 변경 체크
+        else:
+            add_text_to_image(draw, "V", (550, 130), font_size=20, color="red") # 취소 체크
+
+        # 2. 접수일 (선택 사항, 필요하면 추가)
+        # add_text_to_image(draw, data['reg_date'], (250, 170))
+
+        # 3. 변경 사항 입력 (행별 좌표 설정)
+        # 열 좌표 예시: 변경전 X=350, 변경후 X=900
+        # 행 좌표 예시: 일시 Y=950, 장소 Y=1050 ... (간격 약 100px 가정)
+        
+        row_start_y = 950
+        row_gap = 100
+        col_before_x = 350
+        col_after_x = 900
+
+        # 데이터 매핑 (항목 순서대로)
+        # items: [일시, 장소, 대상, 인원수, 인력, 항목, 기타]
+        items = ['date', 'place', 'target', 'count', 'staff', 'items', 'etc']
+        
+        for i, item in enumerate(items):
+            y_pos = row_start_y + (i * row_gap)
+            before_val = data.get(f'{item}_before', '')
+            after_val = data.get(f'{item}_after', '')
+            
+            add_text_to_image(draw, before_val, (col_before_x, y_pos))
+            add_text_to_image(draw, after_val, (col_after_x, y_pos))
+
+        # 4. 취소 사유 (취소일 경우 하단에 표시)
+        if data['type'] == 'cancel':
+            # 취소 사유 좌표 예시
+            add_text_to_image(draw, data['cancel_reason'], (300, 1750))
+
+        # 5. 하단 작성일 (오늘 날짜)
+        today = datetime.now()
+        # 좌표 예시: 년(1600, 2200) 월(1700, 2200) 일(1800, 2200)
+        # 이미지 해상도에 따라 이 좌표는 반드시 튜닝해야 합니다.
+        add_text_to_image(draw, str(today.year), (1200, 2200))
+        add_text_to_image(draw, str(today.month), (1350, 2200))
+        add_text_to_image(draw, str(today.day), (1450, 2200))
+
+        pdf_buffer = BytesIO()
+        image.save(pdf_buffer, format="PDF", resolution=100.0)
+        return pdf_buffer.getvalue()
+
+    except Exception as e:
+        st.error(f"변경신청서 생성 오류: {e}")
         return None
 
 def merge_documents(cover_pdf_bytes, doctor_name):
     """표지 + 의사면허증 + 개설허가증 + 특수지정서 병합"""
     merger = PdfWriter()
-    
     try:
-        # 1. 신고서 표지
         merger.append(PdfReader(BytesIO(cover_pdf_bytes)))
         
-        # 2. 의사 면허증
         doc_file = DOCTOR_MAP.get(doctor_name)
         if doc_file and os.path.exists(doc_file):
             merger.append(PdfReader(doc_file))
         
-        # 3. 개설허가증
         if os.path.exists(FILE_LICENSE):
             merger.append(PdfReader(FILE_LICENSE))
 
-        # 4. 특수의료기관지정서 (JPG -> PDF 변환)
         if os.path.exists(FILE_SPECIAL_CERT):
             img_pdf_buffer = BytesIO()
             Image.open(FILE_SPECIAL_CERT).convert('RGB').save(img_pdf_buffer, format="PDF")
@@ -128,15 +181,13 @@ def merge_documents(cover_pdf_bytes, doctor_name):
         output_buffer = BytesIO()
         merger.write(output_buffer)
         return output_buffer.getvalue()
-
     except Exception as e:
-        st.error(f"문서 병합 중 오류 발생: {e}")
+        st.error(f"문서 병합 오류: {e}")
         return None
 
 def send_fax_barobill_real(pdf_bytes, receiver_num, sender_num):
-    """바로빌 API를 통한 실제 팩스 전송"""
+    """바로빌 API 팩스 전송"""
     try:
-        # 1. API 키 확인 (Secrets에서 로드)
         if "BAROBILL_CERT_KEY" not in st.secrets:
             return False, "API 키(Secrets)가 설정되지 않았습니다."
             
@@ -144,99 +195,180 @@ def send_fax_barobill_real(pdf_bytes, receiver_num, sender_num):
         corp_num = st.secrets["BAROBILL_CORP_NUM"]
         sender_id = st.secrets["BAROBILL_ID"]
 
-        # 2. PDF 바이너리를 Base64 문자열로 인코딩
         file_base64 = base64.b64encode(pdf_bytes).decode('utf-8')
-        
-        # 3. SOAP 클라이언트 생성 (Zeep)
         client = Client(BAROBILL_WSDL_URL)
         
-        # 4. SendFax 메서드 호출 (FTP 방식 아님 - 직접 전송)
-        # result 값은 전송접수번호(SendKey) 혹은 오류코드(음수)로 반환됨
         result = client.service.SendFax(
             CERTKEY=cert_key,
             CorpNum=corp_num,
             SenderID=sender_id,
-            SenderNum=sender_num.replace("-", ""),   # 하이픈 제거 권장
+            SenderNum=sender_num.replace("-", ""),
             ReceiverNum=receiver_num.replace("-", ""), 
             ReceiverName="보건소",
             FileBase64=file_base64,
             Subject="출장검진신고서",
-            SendDT="", # 빈값이면 즉시 전송
+            SendDT="",
             RefKey=""
         )
         
-        # 5. 결과 처리
         if int(result) < 0:
-            # 오류 발생 (예: -10001 등)
             return False, f"전송 실패 (에러코드: {result})"
         else:
             return True, f"전송 접수 완료 (접수번호: {result})"
-
     except Exception as e:
         return False, f"API 통신 오류: {str(e)}"
 
-# --- UI 시작 ---
-st.set_page_config(page_title="출장검진 팩스 발송", layout="wide")
-st.title("🏥 출장 건강검진 신고서 통합 발송")
+# --- UI 메인 시작 ---
+st.set_page_config(page_title="출장검진 팩스 시스템", layout="wide")
+st.title("🏥 뉴고려병원 출장검진 팩스 시스템")
 
-with st.form("fax_form"):
-    st.subheader("1. 신고서 작성 및 의사 선택")
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        reg_date = st.date_input("접수일", datetime.now())
-        checkup_date = st.date_input("검진 일시", datetime.now())
-        start_time = st.time_input("시작 시간", datetime.strptime("07:30", "%H:%M"))
-        end_time = st.time_input("종료 시간", datetime.strptime("12:00", "%H:%M"))
-    
-    with col2:
-        location = st.text_input("검진 장소", "김포시 통진읍 대서명로 49")
-        target = st.text_input("검진 대상", "업체명 입력")
-        count = st.number_input("예상 인원", value=50)
-        doctor_name = st.selectbox("담당 의사 선택", ["유민상", "최윤범", "안형숙"])
-        st.caption(f"📌 선택 시 '{DOCTOR_MAP[doctor_name]}' 파일이 첨부됩니다.")
+# 탭 생성
+tab1, tab2 = st.tabs(["📑 출장검진 신고서", "📝 변경/취소 신청서"])
 
-    st.markdown("---")
-    st.subheader("2. 발송 정보")
+# ==========================================
+# 탭 1: 기존 출장검진 신고서
+# ==========================================
+with tab1:
+    with st.form("report_form"):
+        st.subheader("1. 신고서 내용 작성")
+        c1, c2 = st.columns(2)
+        with c1:
+            reg_date = st.date_input("접수일", datetime.now())
+            checkup_date = st.date_input("검진 일시", datetime.now())
+            start_time = st.time_input("시작 시간", datetime.strptime("07:30", "%H:%M"))
+            end_time = st.time_input("종료 시간", datetime.strptime("12:00", "%H:%M"))
+        with c2:
+            location = st.text_input("장소", "김포시 통진읍 대서명로 49")
+            target = st.text_input("대상", "업체명 입력")
+            count = st.number_input("인원 수", value=50)
+            doctor_name = st.selectbox("담당 의사", ["유민상", "최윤범", "안형숙"])
 
-    c1, c2 = st.columns([1, 1])
-    with c1:
-        selected_org = st.selectbox("수신처(보건소)", list(FAX_BOOK.keys()))
-    with c2:
-        receiver_fax = st.text_input("수신 팩스번호", value=FAX_BOOK[selected_org])
-
-    sender_fax = st.text_input("발신 팩스번호", "031-987-7777")
-    
-    submitted = st.form_submit_button("📄 통합 문서 생성 및 팩스 전송", use_container_width=True)
-
-if submitted:
-    if not receiver_fax:
-        st.warning("⚠️ 수신번호를 입력하세요.")
-    else:
-        data = {
-            'reg_date': reg_date, 'checkup_date': checkup_date,
-            'start_time': start_time, 'end_time': end_time,
-            'location': location, 'target': target,
-            'count': count, 'doctor_name': doctor_name
-        }
+        st.markdown("---")
+        st.subheader("2. 발송 정보")
+        rc1, rc2 = st.columns(2)
+        with rc1:
+            selected_org = st.selectbox("수신처(보건소)", list(FAX_BOOK.keys()), key="tab1_org")
+        with rc2:
+            receiver_fax = st.text_input("수신 팩스번호", value=FAX_BOOK[selected_org], key="tab1_fax")
+        sender_fax = st.text_input("발신 팩스번호", "031-987-7777", key="tab1_sender")
         
-        # 문서 생성 및 병합
-        cover_bytes = create_cover_pdf(data)
-        if cover_bytes:
-            merged_pdf_bytes = merge_documents(cover_bytes, doctor_name)
+        submit_report = st.form_submit_button("통합 문서 생성 및 전송")
+
+    if submit_report:
+        if not receiver_fax:
+            st.warning("수신번호를 입력하세요.")
+        else:
+            data = {
+                'reg_date': reg_date, 'checkup_date': checkup_date,
+                'start_time': start_time, 'end_time': end_time,
+                'location': location, 'target': target,
+                'count': count, 'doctor_name': doctor_name
+            }
+            cover_bytes = create_report_pdf(data)
+            if cover_bytes:
+                merged_bytes = merge_documents(cover_bytes, doctor_name)
+                if merged_bytes:
+                    st.success("문서 생성 완료")
+                    success, msg = send_fax_barobill_real(merged_bytes, receiver_fax, sender_fax)
+                    if success: st.success(msg)
+                    else: st.error(msg)
+
+# ==========================================
+# 탭 2: 변경/취소 신청서 (신규 기능)
+# ==========================================
+with tab2:
+    st.info("💡 변경 사항이 있는 항목만 입력하세요.")
+    
+    with st.form("fix_form"):
+        # 신청 구분
+        apply_type = st.radio("신청 구분", ["변경 신청", "취소 신청"], horizontal=True)
+        type_code = 'change' if apply_type == "변경 신청" else 'cancel'
+
+        # 입력 테이블 구성
+        st.markdown("#### 상세 내용 입력")
+        
+        # 2열 레이아웃 헤더
+        h1, h2 = st.columns(2)
+        h1.caption("▼ 변경 전 내용")
+        h2.caption("▼ 변경 후 내용")
+
+        # 각 항목별 입력 필드
+        # 1. 일시
+        r1_1, r1_2 = st.columns(2)
+        date_before = r1_1.text_input("일시 (변경 전)")
+        date_after = r1_2.text_input("일시 (변경 후)")
+        
+        # 2. 장소
+        r2_1, r2_2 = st.columns(2)
+        place_before = r2_1.text_input("장소 (변경 전)")
+        place_after = r2_2.text_input("장소 (변경 후)")
+
+        # 3. 대상
+        r3_1, r3_2 = st.columns(2)
+        target_before = r3_1.text_input("대상 (변경 전)")
+        target_after = r3_2.text_input("대상 (변경 후)")
+
+        # 4. 인원 수
+        r4_1, r4_2 = st.columns(2)
+        count_before = r4_1.text_input("인원 수 (변경 전)")
+        count_after = r4_2.text_input("인원 수 (변경 후)")
+
+        # 5. 수행 인력
+        r5_1, r5_2 = st.columns(2)
+        staff_before = r5_1.text_input("수행 인력 (변경 전)")
+        staff_after = r5_2.text_input("수행 인력 (변경 후)")
+
+        # 6. 실시 항목
+        r6_1, r6_2 = st.columns(2)
+        items_before = r6_1.text_input("실시 항목 (변경 전)")
+        items_after = r6_2.text_input("실시 항목 (변경 후)")
+
+        # 7. 기타
+        r7_1, r7_2 = st.columns(2)
+        etc_before = r7_1.text_input("기타 (변경 전)")
+        etc_after = r7_2.text_input("기타 (변경 후)")
+
+        # 취소 사유 (취소 신청일 때만 유효하지만 UI는 보여둠)
+        st.markdown("---")
+        cancel_reason = st.text_area("취소 사유 (취소 신청 시 작성)")
+
+        st.subheader("발송 정보")
+        fc1, fc2 = st.columns(2)
+        with fc1:
+            fix_org = st.selectbox("수신처(보건소)", list(FAX_BOOK.keys()), key="tab2_org")
+        with fc2:
+            fix_fax = st.text_input("수신 팩스번호", value=FAX_BOOK[fix_org], key="tab2_fax")
+        fix_sender = st.text_input("발신 팩스번호", "031-987-7777", key="tab2_sender")
+
+        submit_fix = st.form_submit_button("변경/취소 신청서 생성 및 전송")
+
+    if submit_fix:
+        if not fix_fax:
+            st.warning("수신번호를 입력하세요.")
+        else:
+            fix_data = {
+                'type': type_code,
+                'date_before': date_before, 'date_after': date_after,
+                'place_before': place_before, 'place_after': place_after,
+                'target_before': target_before, 'target_after': target_after,
+                'count_before': count_before, 'count_after': count_after,
+                'staff_before': staff_before, 'staff_after': staff_after,
+                'items_before': items_before, 'items_after': items_after,
+                'etc_before': etc_before, 'etc_after': etc_after,
+                'cancel_reason': cancel_reason
+            }
             
-            if merged_pdf_bytes:
-                r1, r2 = st.columns(2)
-                with r1:
-                    st.success("✅ 문서 병합 완료")
-                    st.download_button("📥 통합 PDF 다운로드", merged_pdf_bytes, "통합신고서.pdf")
-                with r2:
-                    with st.spinner("🖨️ 바로빌로 팩스 전송 중..."):
-                        # 실제 전송 함수 호출
-                        success, msg = send_fax_barobill_real(merged_pdf_bytes, receiver_fax, sender_fax)
-                        
-                        if success:
-                            st.balloons()
-                            st.success(f"✅ {msg}")
-                        else:
-                            st.error(f"❌ {msg}")
+            # PDF 생성
+            fix_pdf_bytes = create_fix_pdf(fix_data)
+            
+            if fix_pdf_bytes:
+                # 결과 표시 화면
+                res1, res2 = st.columns(2)
+                with res1:
+                    st.success("문서 생성 완료")
+                    st.download_button("신청서 다운로드", fix_pdf_bytes, "변경취소신청서.pdf")
+                with res2:
+                    with st.spinner("팩스 전송 중..."):
+                        success, msg = send_fax_barobill_real(fix_pdf_bytes, fix_fax, fix_sender)
+                        if success: st.success(msg)
+                        else: st.error(msg)
