@@ -2,13 +2,26 @@ import streamlit as st
 from PIL import Image, ImageDraw, ImageFont
 from io import BytesIO
 from datetime import datetime
+from pypdf import PdfWriter, PdfReader  # PDF 병합을 위한 라이브러리
 import base64
+import os
 
-# --- 설정 및 상수 ---
-FONT_PATH = "NanumGothic.ttf"  # 폰트 파일 경로
-TEMPLATE_PATH = "background.png"  # 배경 이미지 파일 경로
+# --- 파일 경로 설정 ---
+FONT_PATH = "NanumGothic.ttf"
+TEMPLATE_PATH = "background.png"
 
-# --- 주소록 데이터 (제공해주신 데이터 반영) ---
+# 고정 첨부 파일
+FILE_LICENSE = "개설허가증.pdf"
+FILE_SPECIAL_CERT = "특수의료기관지정서.jpg"
+
+# 의사별 면허증 매칭
+DOCTOR_MAP = {
+    "유민상": "유민상.pdf",
+    "최윤범": "최윤범.pdf",
+    "안형숙": "안형숙.pdf"
+}
+
+# --- 주소록 데이터 ---
 FAX_BOOK = {
     "직접 입력": "",
     "김포시 보건소": "031-5186-4129",
@@ -47,37 +60,30 @@ FAX_BOOK = {
 }
 
 def add_text_to_image(draw, text, position, font_size=15, color="black"):
-    """이미지의 특정 좌표에 텍스트를 그리는 함수"""
-    if not text:
-        return
+    if not text: return
     try:
         font = ImageFont.truetype(FONT_PATH, font_size)
     except:
         font = ImageFont.load_default()
-    
     draw.text(position, str(text), fill=color, font=font)
 
-def create_fax_document(data):
-    """입력받은 데이터를 배경 이미지에 합성하여 PDF 바이너리로 반환"""
+def create_cover_pdf(data):
+    """신고서 표지(1페이지) 생성"""
     try:
         image = Image.open(TEMPLATE_PATH).convert("RGB")
         draw = ImageDraw.Draw(image)
         
-        # --- 좌표 매핑 (background.png에 맞춰 미세 조정 필요) ---
-        add_text_to_image(draw, data['reg_date'], (150, 100)) # 접수일
-        
+        # 좌표 매핑 (배경 이미지에 맞춰 조정 필요)
+        add_text_to_image(draw, data['reg_date'], (150, 100))
         target_date_str = data['checkup_date'].strftime("%Y년 %m월 %d일")
-        add_text_to_image(draw, target_date_str, (150, 420)) # 일시
-        
+        add_text_to_image(draw, target_date_str, (150, 420))
         time_str = f"{data['start_time'].strftime('%H:%M')} ~ {data['end_time'].strftime('%H:%M')}"
-        add_text_to_image(draw, time_str, (150, 450)) # 시간
+        add_text_to_image(draw, time_str, (150, 450))
+        add_text_to_image(draw, data['location'], (150, 480))
+        add_text_to_image(draw, data['target'], (150, 510))
+        add_text_to_image(draw, f"{data['count']}명", (400, 540))
+        add_text_to_image(draw, data['doctor_name'], (450, 650))
         
-        add_text_to_image(draw, data['location'], (150, 480)) # 장소
-        add_text_to_image(draw, data['target'], (150, 510)) # 대상
-        add_text_to_image(draw, f"{data['count']}명", (400, 540)) # 인원수
-        add_text_to_image(draw, data['doctor_name'], (450, 650)) # 의사명
-        
-        # 하단 신고일 (현재 날짜)
         today = datetime.now()
         add_text_to_image(draw, str(today.year), (180, 850))
         add_text_to_image(draw, str(today.month), (240, 850))
@@ -86,35 +92,59 @@ def create_fax_document(data):
         pdf_buffer = BytesIO()
         image.save(pdf_buffer, format="PDF", resolution=100.0)
         return pdf_buffer.getvalue()
-        
     except Exception as e:
-        st.error(f"문서 생성 중 오류 발생: {e}")
+        st.error(f"표지 생성 오류: {e}")
+        return None
+
+def merge_documents(cover_pdf_bytes, doctor_name):
+    """표지 + 의사면허증 + 개설허가증 + 특수지정서 병합"""
+    merger = PdfWriter()
+    
+    try:
+        # 1. 신고서 표지 추가
+        merger.append(PdfReader(BytesIO(cover_pdf_bytes)))
+        
+        # 2. 의사 면허증 추가
+        doc_file = DOCTOR_MAP.get(doctor_name)
+        if doc_file and os.path.exists(doc_file):
+            merger.append(PdfReader(doc_file))
+        else:
+            st.warning(f"⚠️ {doctor_name} 의사의 면허증 파일({doc_file})을 찾을 수 없습니다.")
+
+        # 3. 개설허가증 추가
+        if os.path.exists(FILE_LICENSE):
+            merger.append(PdfReader(FILE_LICENSE))
+        else:
+            st.warning(f"⚠️ {FILE_LICENSE} 파일이 없습니다.")
+
+        # 4. 특수의료기관지정서 (JPG -> PDF 변환 후 추가)
+        if os.path.exists(FILE_SPECIAL_CERT):
+            img_pdf_buffer = BytesIO()
+            Image.open(FILE_SPECIAL_CERT).convert('RGB').save(img_pdf_buffer, format="PDF")
+            merger.append(PdfReader(img_pdf_buffer))
+        else:
+            st.warning(f"⚠️ {FILE_SPECIAL_CERT} 파일이 없습니다.")
+
+        # 병합된 결과 반환
+        output_buffer = BytesIO()
+        merger.write(output_buffer)
+        return output_buffer.getvalue()
+
+    except Exception as e:
+        st.error(f"문서 병합 중 오류 발생: {e}")
         return None
 
 def send_fax_barobill(pdf_bytes, receiver_num, sender_num):
-    """바로빌 API를 이용해 팩스 전송 (구조 예시)"""
-    file_base64 = base64.b64encode(pdf_bytes).decode('utf-8')
-    
-    # 실제 전송 로직 (secrets 사용)
-    # payload = {
-    #     "CERTKEY": st.secrets["BAROBILL_CERT_KEY"],
-    #     "CorpNum": st.secrets["BAROBILL_CORP_NUM"],
-    #     "SenderNum": sender_num,
-    #     "ReceiverNum": receiver_num,
-    #     "FileBase64": file_base64,
-    #     "Subject": "출장건강검진신고서"
-    # }
-    # requests.post(...) 
-    
-    return True, "전송 성공 (테스트 모드)"
+    # 실제 바로빌 연동 시 st.secrets 사용 필요
+    # payload = { ... "FileBase64": base64.b64encode(pdf_bytes).decode('utf-8') ... }
+    return True, "전송 성공 (테스트 모드 - 4개 문서 병합됨)"
 
-# --- Streamlit UI 시작 ---
-st.set_page_config(page_title="출장검진 신고서 팩스", layout="wide")
-
-st.title("🏥 출장 건강검진 신고서 자동 팩스")
+# --- UI 시작 ---
+st.set_page_config(page_title="출장검진 팩스 발송", layout="wide")
+st.title("🏥 출장 건강검진 신고서 통합 발송")
 
 with st.form("fax_form"):
-    st.subheader("1. 신고서 내용 작성")
+    st.subheader("1. 신고서 작성 및 의사 선택")
     
     col1, col2 = st.columns(2)
     with col1:
@@ -124,73 +154,54 @@ with st.form("fax_form"):
         end_time = st.time_input("종료 시간", datetime.strptime("12:00", "%H:%M"))
     
     with col2:
-        location = st.text_input("검진 장소", "김포시 통진읍 대서명로 49 (1층 직원식당)")
+        location = st.text_input("검진 장소", "김포시 통진읍 대서명로 49")
         target = st.text_input("검진 대상", "업체명 입력")
-        count = st.number_input("예상 인원 수", value=50)
-        doctor_name = st.text_input("의사 성명", "유민상")
+        count = st.number_input("예상 인원", value=50)
+        
+        # 의사 선택 (라디오 버튼 또는 셀렉트박스)
+        doctor_name = st.selectbox("담당 의사 선택", ["유민상", "최윤범", "안형숙"])
+        st.caption(f"📌 선택 시 '{DOCTOR_MAP[doctor_name]}' 파일이 자동으로 첨부됩니다.")
 
     st.markdown("---")
-    st.subheader("2. 팩스 발송 정보")
+    st.subheader("2. 발송 정보")
 
-    # --- 발송처 선택 로직 ---
     c1, c2 = st.columns([1, 1])
-    
     with c1:
-        # 보건소 선택 드롭다운
-        selected_org = st.selectbox(
-            "수신처(보건소) 선택", 
-            list(FAX_BOOK.keys()), 
-            index=0
-        )
-    
+        selected_org = st.selectbox("수신처(보건소)", list(FAX_BOOK.keys()))
     with c2:
-        # 선택된 보건소의 번호를 가져옴
-        prefilled_fax = FAX_BOOK[selected_org]
-        
-        # 텍스트 입력창에 미리 채워넣음 (수정 가능)
-        receiver_fax = st.text_input(
-            "수신 팩스번호 (직접 수정 가능)", 
-            value=prefilled_fax,
-            help="목록에서 선택하면 자동 입력되며, 필요 시 직접 숫자를 지우고 다시 입력할 수 있습니다."
-        )
+        receiver_fax = st.text_input("수신 팩스번호", value=FAX_BOOK[selected_org])
 
     sender_fax = st.text_input("발신 팩스번호", "031-987-7777")
+    
+    st.info("💡 '문서 생성' 버튼을 누르면 [신고서 + 의사면허증 + 개설허가증 + 특수지정서]가 하나의 PDF로 합쳐집니다.")
+    submitted = st.form_submit_button("📄 통합 문서 생성 및 팩스 전송", use_container_width=True)
 
-    st.markdown("<br>", unsafe_allow_html=True)
-    submitted = st.form_submit_button("📄 문서 생성 및 팩스 전송", use_container_width=True)
-
-# --- 폼 제출 후 처리 ---
 if submitted:
     if not receiver_fax:
-        st.warning("수신 팩스번호를 입력해주세요.")
+        st.warning("⚠️ 수신번호를 입력하세요.")
     else:
+        # 1. 표지 데이터 생성
         data = {
-            'reg_date': reg_date,
-            'checkup_date': checkup_date,
-            'start_time': start_time,
-            'end_time': end_time,
-            'location': location,
-            'target': target,
-            'count': count,
-            'doctor_name': doctor_name
+            'reg_date': reg_date, 'checkup_date': checkup_date,
+            'start_time': start_time, 'end_time': end_time,
+            'location': location, 'target': target,
+            'count': count, 'doctor_name': doctor_name
         }
         
-        # 1. 문서 생성
-        pdf_bytes = create_fax_document(data)
+        # 2. 표지 PDF 생성
+        cover_bytes = create_cover_pdf(data)
         
-        if pdf_bytes:
-            # 2. 결과 화면 분할
-            res_col1, res_col2 = st.columns([1, 1])
+        if cover_bytes:
+            # 3. 전체 문서 병합 (표지 + 의사 + 허가증 + 지정서)
+            merged_pdf_bytes = merge_documents(cover_bytes, doctor_name)
             
-            with res_col1:
-                st.success("✅ 문서 이미지가 생성되었습니다.")
-                st.download_button("📥 생성된 PDF 다운로드", pdf_bytes, "report.pdf")
-            
-            with res_col2:
-                # 3. 팩스 전송 시도
-                with st.spinner(f"🖨️ {receiver_fax}로 팩스 전송 중..."):
-                    success, msg = send_fax_barobill(pdf_bytes, receiver_fax, sender_fax)
-                    if success:
-                        st.info(f"결과: {msg}")
-                    else:
-                        st.error(f"실패: {msg}")
+            if merged_pdf_bytes:
+                r1, r2 = st.columns(2)
+                with r1:
+                    st.success(f"✅ 총 4개의 문서가 병합되었습니다.")
+                    st.download_button("📥 통합 PDF 다운로드", merged_pdf_bytes, "통합신고서.pdf")
+                with r2:
+                    with st.spinner("🖨️ 팩스 전송 중..."):
+                        success, msg = send_fax_barobill(merged_pdf_bytes, receiver_fax, sender_fax)
+                        if success: st.info(f"결과: {msg}")
+                        else: st.error(f"실패: {msg}")
