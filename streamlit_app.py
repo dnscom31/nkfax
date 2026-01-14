@@ -15,7 +15,7 @@ TEMPLATE_FIX_PATH = "background_fix001-001.png"  # 변경/취소 신청서 배�
 
 # 고정 첨부 파일
 FILE_LICENSE = "개설허가증.pdf"
-FILE_SPECIAL_CERT = "검진기관지정서.pdf"
+FILE_SPECIAL_CERT = "특수의료기관지정서.jpg"
 
 # 의사별 면허증 매칭 (파일명 확인 필수)
 DOCTOR_MAP = {
