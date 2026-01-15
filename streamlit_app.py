@@ -162,11 +162,11 @@ def create_fix_pdf(data):
         today = datetime.now()
         # 좌표 추정: 변경신청서는 신고서보다 표가 길어서 더 아래쪽에 위치함 (약 1500~1600 사이)
         # 년
-        add_text_to_image(draw, str(today.year), (1000, 1430), font_size=28)
+        add_text_to_image(draw, str(today.year), (870, 1430), font_size=24)
         # 월
-        add_text_to_image(draw, str(today.month), (1070, 1430), font_size=28)
+        add_text_to_image(draw, str(today.month), (980, 1430), font_size=24)
         # 일
-        add_text_to_image(draw, str(today.day), (1160, 1430), font_size=28)
+        add_text_to_image(draw, str(today.day), (1070, 1430), font_size=24)
 
         pdf_buffer = BytesIO()
         image.save(pdf_buffer, format="PDF", resolution=150.0)
