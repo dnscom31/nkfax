@@ -143,9 +143,9 @@ def create_fix_pdf(data):
         
         # [체크박스] - 위치 수정하려면 여기 좌표를 변경하세요
         if data['type'] == 'change':
-            add_text_to_image(draw, "V", (695, 145), font_size=30, color="red")
+            add_text_to_image(draw, "V", (685, 165), font_size=30, color="red")
         else:
-            add_text_to_image(draw, "V", (695, 175), font_size=30, color="red")
+            add_text_to_image(draw, "V", (685, 225), font_size=30, color="red")
 
         # [테이블 행 좌표]
         rows_y = {
