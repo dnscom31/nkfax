@@ -180,7 +180,7 @@ def create_fix_pdf(data):
 
         # 취소 사유
         if data['type'] == 'cancel':
-            add_text_to_image(draw, data['cancel_reason'], (300, 1200))
+            add_text_to_image(draw, data['cancel_reason'], (300, 1450))
 
         # [하단 날짜]
         today = datetime.now()
