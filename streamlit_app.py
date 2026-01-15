@@ -93,13 +93,13 @@ def create_report_pdf(data):
         add_text_to_image(draw, time_str, (320, 530))
 
         #주소
-        add_text_to_image(draw, data['location'], (730, 490))
+        add_text_to_image(draw, data['location'], (750, 490))
 
         #업체명
         add_text_to_image(draw, data['target'], (320, 565))
 
         #인원
-        add_text_to_image(draw, f"{data['count']}명", (950, 565))
+        add_text_to_image(draw, f"{data['count']}명", (930, 565))
 
         #의사명
         add_text_to_image(draw, data['doctor_name'], (620, 755))
@@ -108,11 +108,11 @@ def create_report_pdf(data):
         # 좌표는 배경 이미지의 '년', '월', '일' 글자 바로 앞부분으로 추정하여 잡았습니다.
         today = datetime.now()
         # 년 (900~930 근처)
-        add_text_to_image(draw, str(today.year), (910, 1000), font_size=18)
+        add_text_to_image(draw, str(today.year), (870, 1040), font_size=18)
         # 월 (1030 근처)
-        add_text_to_image(draw, str(today.month), (980, 1000), font_size=18)
+        add_text_to_image(draw, str(today.month), (980, 1040), font_size=18)
         # 일 (1120 근처)
-        add_text_to_image(draw, str(today.day), (1070, 1000), font_size=18)
+        add_text_to_image(draw, str(today.day), (1070, 1040), font_size=18)
 
         pdf_buffer = BytesIO()
         image.save(pdf_buffer, format="PDF", resolution=150.0)
