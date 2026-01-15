@@ -108,11 +108,11 @@ def create_report_pdf(data):
         # 좌표는 배경 이미지의 '년', '월', '일' 글자 바로 앞부분으로 추정하여 잡았습니다.
         today = datetime.now()
         # 년 (900~930 근처)
-        add_text_to_image(draw, str(today.year), (870, 1035), font_size=18)
+        add_text_to_image(draw, str(today.year), (870, 1032), font_size=18)
         # 월 (1030 근처)
-        add_text_to_image(draw, str(today.month), (980, 1030), font_size=18)
+        add_text_to_image(draw, str(today.month), (980, 1032), font_size=18)
         # 일 (1120 근처)
-        add_text_to_image(draw, str(today.day), (1070, 1025), font_size=18)
+        add_text_to_image(draw, str(today.day), (1070, 1032), font_size=18)
 
         pdf_buffer = BytesIO()
         image.save(pdf_buffer, format="PDF", resolution=150.0)
