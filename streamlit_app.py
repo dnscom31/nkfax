@@ -256,6 +256,10 @@ def upload_file_to_ftp(pdf_bytes, filename):
         
         ftp = ftplib.FTP()
         ftp.connect(ftp_host, ftp_port)
+        
+        # [핵심 수정] 한글 파일명 전송을 위해 인코딩을 CP949(EUC-KR)로 강제 설정
+        ftp.encoding = "cp949"
+        
         ftp.login(user=ftp_id, passwd=ftp_pwd)
         ftp.set_pasv(True)
         ftp.storbinary(f"STOR {filename}", BytesIO(pdf_bytes))
