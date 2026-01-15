@@ -117,9 +117,9 @@ def create_report_pdf(data):
             check_other = True
             
         if check_national:
-            add_text_to_image(draw, "V", (250, 665), font_size=22, color="red")
+            add_text_to_image(draw, "V", (252, 665), font_size=22, color="red")
         if check_other:
-            add_text_to_image(draw, "V", (260, 695), font_size=22, color="red")
+            add_text_to_image(draw, "V", (252, 695), font_size=22, color="red")
 
         # 4. 하단 날짜 (유태전 서명 위)
         today = datetime.now()
@@ -143,15 +143,15 @@ def create_fix_pdf(data):
         
         # [체크박스]
         if data['type'] == 'change':
-            add_text_to_image(draw, "V", (705, 135), font_size=30, color="red")
+            add_text_to_image(draw, "V", (695, 145), font_size=30, color="red")
         else:
             add_text_to_image(draw, "V", (705, 175), font_size=30, color="red")
 
         # [테이블 행 좌표]
         rows_y = {
-            'date': 770,
-            'place': 800,
-            'target': 855,
+            'date': 650,
+            'place': 775,
+            'target': 845,
             'count': 905,
             'staff': 970,
             'items': 1050,
