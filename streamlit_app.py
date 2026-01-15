@@ -149,7 +149,7 @@ def create_fix_pdf(data):
 
         # [테이블 행 좌표]
         rows_y = {
-            'date': 650,
+            'date': 700,
             'place': 775,
             'target': 845,
             'count': 905,
