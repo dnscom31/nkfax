@@ -338,7 +338,7 @@ with tab1:
         start_time = st.time_input("시작 시간", datetime.strptime("07:30", "%H:%M"))
         end_time = st.time_input("종료 시간", datetime.strptime("12:00", "%H:%M"))
     with c2:
-        location = st.text_input("장소", "김포시 통진읍 대서명로 49")
+        location = st.text_input("장소", "주소입력")
         target = st.text_input("대상", "업체명 입력")
         count = st.number_input("인원 수", value=50)
         doctor_name = st.selectbox("담당 의사", ["유민상", "최윤범", "안형숙"])
