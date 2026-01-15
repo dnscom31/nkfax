@@ -145,7 +145,7 @@ def create_fix_pdf(data):
         if data['type'] == 'change':
             add_text_to_image(draw, "V", (695, 145), font_size=30, color="red")
         else:
-            add_text_to_image(draw, "V", (705, 175), font_size=30, color="red")
+            add_text_to_image(draw, "V", (695, 175), font_size=30, color="red")
 
         # [테이블 행 좌표]
         rows_y = {
