@@ -117,9 +117,9 @@ def create_report_pdf(data):
             check_other = True
             
         if check_national:
-            add_text_to_image(draw, "V", (322, 665), font_size=22, color="red")
+            add_text_to_image(draw, "V", (302, 665), font_size=22, color="red")
         if check_other:
-            add_text_to_image(draw, "V", (322, 695), font_size=22, color="red")
+            add_text_to_image(draw, "V", (312, 695), font_size=22, color="red")
 
         # 4. 하단 날짜 (유태전 서명 위)
         today = datetime.now()
