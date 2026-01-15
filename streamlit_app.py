@@ -66,7 +66,7 @@ FAX_BOOK = {
     "양주시": "0505-041-1924"
 }
 
-# --- 팩스 번호 업데이트 콜백 함수 ---
+# --- 팩스 번호 업데이트 콜백 ---
 def update_fax_tab1():
     if st.session_state.tab1_org in FAX_BOOK:
         st.session_state.tab1_fax = FAX_BOOK[st.session_state.tab1_org]
@@ -135,32 +135,32 @@ def create_report_pdf(data):
         return None
 
 def create_fix_pdf(data):
-    """(탭2) 변경/취소 신청서 생성 (좌표 계산 반영됨)"""
+    """(탭2) 변경/취소 신청서 생성 (좌표 수정됨)"""
     try:
         image = Image.open(TEMPLATE_FIX_PATH).convert("RGB")
         image = image.resize((1240, 1754))
         draw = ImageDraw.Draw(image)
         
-        # [체크박스] X -10, Y +50 반영
+        # [수정] 체크박스: X(-10)=705, Y(+50)=135/175
         if data['type'] == 'change':
             add_text_to_image(draw, "V", (705, 135), font_size=30, color="red")
         else:
             add_text_to_image(draw, "V", (705, 175), font_size=30, color="red")
 
-        # [테이블 좌표] 요청사항 반영 계산
-        # 일시: 기존장소Y(730) + 40 = 770
-        # 장소: 기존장소Y(730) + 85 = 815
-        # 대상: 중간값 865
-        # 인원: 기존인원Y(890) + 20 = 910
+        # [수정] 테이블 행 좌표 (요청하신 계산식 적용)
+        # 일시: 730 + 40 = 770
+        # 장소: 730 + 70 = 800
+        # 대상: 중간값 855
+        # 인원: 890 + 15 = 905
         # 수행: 유지 970
         # 항목: 유지 1050
-        # 기타: 기존기타Y(1130) - 10 = 1120
+        # 기타: 1130 - 10 = 1120
         
         rows_y = {
             'date': 770,
-            'place': 815,
-            'target': 865,
-            'count': 910,
+            'place': 800,
+            'target': 855,
+            'count': 905,
             'staff': 970,
             'items': 1050,
             'etc': 1120
@@ -190,11 +190,11 @@ def create_fix_pdf(data):
         if data['type'] == 'cancel':
             add_text_to_image(draw, data['cancel_reason'], (300, 1300))
 
-        # 하단 날짜 (우측 하단으로 이동)
+        # [복구] 하단 날짜 (사용자님께서 맞춰두신 좌표 Y=1430 원복)
         today = datetime.now()
-        add_text_to_image(draw, str(today.year), (900, 1600), font_size=22)
-        add_text_to_image(draw, str(today.month), (1020, 1600), font_size=22)
-        add_text_to_image(draw, str(today.day), (1110, 1600), font_size=22)
+        add_text_to_image(draw, str(today.year), (870, 1430), font_size=22)
+        add_text_to_image(draw, str(today.month), (990, 1430), font_size=22)
+        add_text_to_image(draw, str(today.day), (1060, 1430), font_size=22)
 
         pdf_buffer = BytesIO()
         image.save(pdf_buffer, format="PDF", resolution=150.0)
@@ -312,16 +312,15 @@ def send_fax_from_ftp_real(filename, receiver_num, sender_num):
 st.set_page_config(page_title="출장검진 팩스 시스템", layout="wide")
 st.title("🏥 뉴고려병원 출장검진 팩스 시스템")
 
+# Session State 초기화
 if 't1_pdf' not in st.session_state: st.session_state['t1_pdf'] = None
 if 't1_meta' not in st.session_state: st.session_state['t1_meta'] = {}
 if 't2_pdf' not in st.session_state: st.session_state['t2_pdf'] = None
 if 't2_meta' not in st.session_state: st.session_state['t2_meta'] = {}
 
-# Session State 초기값 설정 (팩스 번호용)
-if 'tab1_fax' not in st.session_state:
-    st.session_state.tab1_fax = ""
-if 'tab2_fax' not in st.session_state:
-    st.session_state.tab2_fax = ""
+# 팩스번호 상태 초기화
+if 'tab1_fax' not in st.session_state: st.session_state.tab1_fax = ""
+if 'tab2_fax' not in st.session_state: st.session_state.tab2_fax = ""
 
 tab1, tab2 = st.tabs(["📑 출장검진 신고서", "📝 변경/취소 신청서"])
 
@@ -353,10 +352,8 @@ with tab1:
         st.subheader("2. 발송 정보")
         rc1, rc2 = st.columns(2)
         with rc1:
-            # on_change 추가
             selected_org = st.selectbox("수신처(보건소)", list(FAX_BOOK.keys()), key="tab1_org", on_change=update_fax_tab1)
         with rc2:
-            # key 사용 (value 제거)
             receiver_fax = st.text_input("수신 팩스번호", key="tab1_fax")
         sender_fax = st.text_input("발신 팩스번호", "031-987-7777", key="tab1_sender")
         
@@ -460,10 +457,8 @@ with tab2:
         st.subheader("발송 정보")
         fc1, fc2 = st.columns(2)
         with fc1:
-            # on_change 추가 (수정됨)
             fix_org = st.selectbox("수신처(보건소)", list(FAX_BOOK.keys()), key="tab2_org", on_change=update_fax_tab2)
         with fc2:
-            # key 사용 (수정됨)
             fix_fax = st.text_input("수신 팩스번호", key="tab2_fax")
         fix_sender = st.text_input("발신 팩스번호", "031-987-7777", key="tab2_sender")
 
