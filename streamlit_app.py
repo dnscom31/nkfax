@@ -86,23 +86,23 @@ def create_report_pdf(data):
         # 2. 내용 입력(위치)
         target_date_str = data['checkup_date'].strftime("%Y년 %m월 %d일")
         #일시
-        add_text_to_image(draw, target_date_str, (320, 465))
+        add_text_to_image(draw, target_date_str, (320, 495))
 
         #시간
         time_str = f"{data['start_time'].strftime('%H:%M')} ~ {data['end_time'].strftime('%H:%M')}"
-        add_text_to_image(draw, time_str, (320, 520))
+        add_text_to_image(draw, time_str, (320, 525))
 
         #주소
-        add_text_to_image(draw, data['location'], (770, 515))
+        add_text_to_image(draw, data['location'], (770, 495))
 
         #업체명
-        add_text_to_image(draw, data['target'], (320, 560))
+        add_text_to_image(draw, data['target'], (320, 565))
 
         #인원
-        add_text_to_image(draw, f"{data['count']}명", (1000, 560))
+        add_text_to_image(draw, f"{data['count']}명", (1000, 565))
 
         #의사명
-        add_text_to_image(draw, data['doctor_name'], (650, 755))
+        add_text_to_image(draw, data['doctor_name'], (620, 755))
         
         # 3. 하단 날짜 (유태전 서명 위 '년 월 일' 글자에 맞춤)
         # 좌표는 배경 이미지의 '년', '월', '일' 글자 바로 앞부분으로 추정하여 잡았습니다.
@@ -162,11 +162,11 @@ def create_fix_pdf(data):
         today = datetime.now()
         # 좌표 추정: 변경신청서는 신고서보다 표가 길어서 더 아래쪽에 위치함 (약 1500~1600 사이)
         # 년
-        add_text_to_image(draw, str(today.year), (950, 1550), font_size=28)
+        add_text_to_image(draw, str(today.year), (1000, 1430), font_size=28)
         # 월
-        add_text_to_image(draw, str(today.month), (1070, 1550), font_size=28)
+        add_text_to_image(draw, str(today.month), (1070, 1430), font_size=28)
         # 일
-        add_text_to_image(draw, str(today.day), (1160, 1550), font_size=28)
+        add_text_to_image(draw, str(today.day), (1160, 1430), font_size=28)
 
         pdf_buffer = BytesIO()
         image.save(pdf_buffer, format="PDF", resolution=150.0)
