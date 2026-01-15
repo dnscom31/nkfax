@@ -117,9 +117,9 @@ def create_report_pdf(data):
             check_other = True
             
         if check_national:
-            add_text_to_image(draw, "V", (252, 665), font_size=22, color="red")
+            add_text_to_image(draw, "V", (322, 665), font_size=22, color="red")
         if check_other:
-            add_text_to_image(draw, "V", (252, 695), font_size=22, color="red")
+            add_text_to_image(draw, "V", (322, 695), font_size=22, color="red")
 
         # 4. 하단 날짜 (유태전 서명 위)
         today = datetime.now()
@@ -141,7 +141,7 @@ def create_fix_pdf(data):
         image = image.resize((1240, 1754))
         draw = ImageDraw.Draw(image)
         
-        # [체크박스]
+        # [체크박스] - 위치 수정하려면 여기 좌표를 변경하세요
         if data['type'] == 'change':
             add_text_to_image(draw, "V", (695, 145), font_size=30, color="red")
         else:
@@ -316,7 +316,7 @@ if 'tab2_fax' not in st.session_state: st.session_state.tab2_fax = ""
 
 tab1, tab2 = st.tabs(["📑 출장검진 신고서", "📝 변경/취소 신청서"])
 
-# 탭 1 (st.form 제거됨)
+# 탭 1 (일반 버튼 사용, on_change 적용)
 with tab1:
     st.subheader("1. 신고서 내용 작성")
     
@@ -343,13 +343,11 @@ with tab1:
     st.subheader("2. 발송 정보")
     rc1, rc2 = st.columns(2)
     with rc1:
-        # on_change 동작 가능 (폼 외부)
         selected_org = st.selectbox("수신처(보건소)", list(FAX_BOOK.keys()), key="tab1_org", on_change=update_fax_tab1)
     with rc2:
         receiver_fax = st.text_input("수신 팩스번호", key="tab1_fax")
     sender_fax = st.text_input("발신 팩스번호", "031-987-7777", key="tab1_sender")
     
-    # 일반 버튼으로 변경
     submit_preview = st.button("1단계: 문서 생성 및 미리보기", key="btn_preview_1")
 
     if submit_preview:
@@ -367,11 +365,14 @@ with tab1:
             if cover_bytes:
                 merged_bytes = merge_documents_report(cover_bytes, doctor_name)
                 if merged_bytes:
+                    target_name = data['target'].replace(" ", "_") if data['target'] else "Unknown"
+                    filename = f"{target_name}_출장신고서_{datetime.now().strftime('%Y%m%d')}.pdf"
+                    
                     st.session_state['t1_pdf'] = merged_bytes
                     st.session_state['t1_meta'] = {
                         'receiver': receiver_fax,
                         'sender': sender_fax,
-                        'filename': f"Report_{datetime.now().strftime('%Y%m%d%H%M%S')}.pdf"
+                        'filename': filename
                     }
                     st.success("문서가 생성되었습니다. 아래에서 내용을 확인하고 전송하세요.")
     
@@ -402,7 +403,7 @@ with tab1:
                     else:
                         st.error(ftp_msg)
 
-# 탭 2 (st.form 제거됨)
+# 탭 2 (일반 버튼 사용, on_change 적용)
 with tab2:
     st.info("💡 변경 사항이 있는 항목만 입력하세요.")
     
@@ -449,13 +450,11 @@ with tab2:
     st.subheader("발송 정보")
     fc1, fc2 = st.columns(2)
     with fc1:
-        # on_change 동작 가능 (폼 외부)
         fix_org = st.selectbox("수신처(보건소)", list(FAX_BOOK.keys()), key="tab2_org", on_change=update_fax_tab2)
     with fc2:
         fix_fax = st.text_input("수신 팩스번호", key="tab2_fax")
     fix_sender = st.text_input("발신 팩스번호", "031-987-7777", key="tab2_sender")
 
-    # 일반 버튼으로 변경
     submit_fix_preview = st.button("1단계: 문서 생성 및 미리보기", key="btn_preview_2")
 
     if submit_fix_preview:
@@ -479,11 +478,14 @@ with tab2:
             if fix_pdf_bytes:
                 merged_bytes = merge_documents_fix(fix_pdf_bytes, staff_after)
                 if merged_bytes:
+                    target_name = fix_data['target_before'].replace(" ", "_") if fix_data['target_before'] else "Unknown"
+                    filename = f"{target_name}_변경취소신청서_{datetime.now().strftime('%Y%m%d')}.pdf"
+
                     st.session_state['t2_pdf'] = merged_bytes
                     st.session_state['t2_meta'] = {
                         'receiver': fix_fax,
                         'sender': fix_sender,
-                        'filename': f"FixRequest_{datetime.now().strftime('%Y%m%d%H%M%S')}.pdf"
+                        'filename': filename
                     }
                     st.success("문서가 생성되었습니다. 아래에서 내용을 확인하고 전송하세요.")
 
