@@ -81,37 +81,61 @@ def create_report_pdf(data):
         image = image.resize((1240, 1754)) # 표준 A4 픽셀
         draw = ImageDraw.Draw(image)
         
-        # 1. 접수일 입력 부분 삭제 (요청사항)
+        # 1. 접수일 입력 삭제됨
         
-        # 2. 내용 입력(위치)
+        # 2. 내용 입력 (좌표는 사용자 수정본 기준)
+        
+        # 목적 (New: 일시 바로 위) - 추정 좌표 (320, 455)
+        add_text_to_image(draw, data['purpose'], (320, 455))
+
+        # 일시
         target_date_str = data['checkup_date'].strftime("%Y년 %m월 %d일")
-        #일시
         add_text_to_image(draw, target_date_str, (320, 490))
 
-        #시간
+        # 시간
         time_str = f"{data['start_time'].strftime('%H:%M')} ~ {data['end_time'].strftime('%H:%M')}"
         add_text_to_image(draw, time_str, (320, 530))
 
-        #주소
+        # 주소 (장소)
         add_text_to_image(draw, data['location'], (750, 490))
 
-        #업체명
+        # 업체명 (대상)
         add_text_to_image(draw, data['target'], (320, 565))
 
-        #인원
+        # 인원
         add_text_to_image(draw, f"{data['count']}명", (930, 565))
+        
+        # --- [자동화] 체크박스 로직 ---
+        # 대상(Y=565)과 의사(Y=755) 사이의 공간에 체크박스 위치
+        # 체크박스 1: 국가건강검진 (추정 Y: 665)
+        # 체크박스 2: 법령 외 검진 (추정 Y: 695)
+        
+        purpose = data['purpose']
+        check_national = False # 국가건강검진
+        check_other = False    # 그 외 법령
+        
+        if purpose == "출장 일반검진":
+            check_national = True
+        elif purpose == "출장 일반검진+특수검진":
+            check_national = True
+            check_other = True
+        else:
+            # 특수검진 또는 보건예방사업검진
+            check_other = True
+            
+        if check_national:
+            add_text_to_image(draw, "V", (322, 665), font_size=22, color="red")
+            
+        if check_other:
+            add_text_to_image(draw, "V", (322, 695), font_size=22, color="red")
 
-        #의사명
+        # 의사명
         add_text_to_image(draw, data['doctor_name'], (620, 755))
         
-        # 3. 하단 날짜 (유태전 서명 위 '년 월 일' 글자에 맞춤)
-        # 좌표는 배경 이미지의 '년', '월', '일' 글자 바로 앞부분으로 추정하여 잡았습니다.
+        # 3. 하단 날짜 (유태전 서명 위) - 사용자 수정본 좌표 유지
         today = datetime.now()
-        # 년 (900~930 근처)
         add_text_to_image(draw, str(today.year), (870, 1032), font_size=18)
-        # 월 (1030 근처)
         add_text_to_image(draw, str(today.month), (980, 1032), font_size=18)
-        # 일 (1120 근처)
         add_text_to_image(draw, str(today.day), (1070, 1032), font_size=18)
 
         pdf_buffer = BytesIO()
@@ -137,8 +161,7 @@ def create_fix_pdf(data):
         col_after_x = 850
         rows_y = {'date': 650, 'place': 730, 'target': 810, 'count': 890, 'staff': 970, 'items': 1050, 'etc': 1130}
         
-        # 일반 항목 처리
-        items = ['date', 'place', 'target', 'count', 'items', 'etc'] # staff 제외 (별도 처리)
+        items = ['date', 'place', 'target', 'count', 'items', 'etc']
         for item in items:
             y_pos = rows_y[item]
             before_val = data.get(f'{item}_before', '')
@@ -146,7 +169,6 @@ def create_fix_pdf(data):
             if before_val: add_text_to_image(draw, before_val, (col_before_x, y_pos))
             if after_val: add_text_to_image(draw, after_val, (col_after_x, y_pos))
 
-        # 수행 인력 (Staff) 처리 - 선택된 의사 이름 입력
         staff_y = rows_y['staff']
         if data['staff_before'] and data['staff_before'] != "선택안함":
              add_text_to_image(draw, data['staff_before'], (col_before_x, staff_y))
@@ -154,18 +176,13 @@ def create_fix_pdf(data):
         if data['staff_after'] and data['staff_after'] != "선택안함":
              add_text_to_image(draw, data['staff_after'], (col_after_x, staff_y))
 
-        # 취소 사유
         if data['type'] == 'cancel':
             add_text_to_image(draw, data['cancel_reason'], (300, 1300))
 
-        # 하단 날짜 (우측 하단 서명란 위 '년 월 일' 맞춤)
+        # 하단 날짜 (사용자 수정본 좌표)
         today = datetime.now()
-        # 좌표 추정: 변경신청서는 신고서보다 표가 길어서 더 아래쪽에 위치함 (약 1500~1600 사이)
-        # 년
         add_text_to_image(draw, str(today.year), (870, 1430), font_size=22)
-        # 월
         add_text_to_image(draw, str(today.month), (990, 1430), font_size=22)
-        # 일
         add_text_to_image(draw, str(today.day), (1060, 1430), font_size=22)
 
         pdf_buffer = BytesIO()
@@ -176,7 +193,7 @@ def create_fix_pdf(data):
         return None
 
 def merge_documents_report(cover_pdf_bytes, doctor_name):
-    """(탭1) 건강검진 신고서용 병합: 표지 + 의사 + 허가증 + 지정서"""
+    """(탭1) 건강검진 신고서용 병합"""
     merger = PdfWriter()
     try:
         merger.append(PdfReader(BytesIO(cover_pdf_bytes)))
@@ -201,12 +218,11 @@ def merge_documents_report(cover_pdf_bytes, doctor_name):
         return None
 
 def merge_documents_fix(cover_pdf_bytes, doctor_name_after):
-    """(탭2) 변경신청서용 병합: 표지 + (변경후 의사 면허증) + 허가증 + 지정서"""
+    """(탭2) 변경신청서용 병합"""
     merger = PdfWriter()
     try:
         merger.append(PdfReader(BytesIO(cover_pdf_bytes)))
         
-        # 변경 후 의사가 선택되었다면 해당 면허증 첨부
         if doctor_name_after and doctor_name_after != "선택안함":
             doc_file = DOCTOR_MAP.get(doctor_name_after)
             if doc_file and os.path.exists(doc_file):
@@ -270,7 +286,6 @@ def send_fax_from_ftp_real(filename, receiver_num, sender_num):
             RefKey=""
         )
         
-        # 결과 처리
         try:
             if int(result) < 0:
                 return False, f"전송 실패 (에러코드: {result})"
@@ -299,7 +314,16 @@ tab1, tab2 = st.tabs(["📑 출장검진 신고서", "📝 변경/취소 신청�
 with tab1:
     with st.form("report_form"):
         st.subheader("1. 신고서 내용 작성")
-        # 접수일 입력란 삭제됨
+        
+        # [신규] 목적 선택
+        purpose_options = [
+            "출장 일반검진+특수검진", 
+            "출장 일반검진", 
+            "출장 특수검진", 
+            "보건예방사업검진(초음파,골밀도,맥파,심전도)"
+        ]
+        purpose = st.selectbox("검진 목적", purpose_options)
+
         c1, c2 = st.columns(2)
         with c1:
             checkup_date = st.date_input("검진 일시", datetime.now())
@@ -327,6 +351,7 @@ with tab1:
             st.warning("수신번호를 입력하세요.")
         else:
             data = {
+                'purpose': purpose, # 추가됨
                 'checkup_date': checkup_date,
                 'start_time': start_time, 'end_time': end_time,
                 'location': location, 'target': target,
@@ -334,7 +359,6 @@ with tab1:
             }
             cover_bytes = create_report_pdf(data)
             if cover_bytes:
-                # 탭1 전용 병합 함수 사용
                 merged_bytes = merge_documents_report(cover_bytes, doctor_name)
                 if merged_bytes:
                     st.session_state['t1_pdf'] = merged_bytes
@@ -403,7 +427,6 @@ with tab2:
         count_before = r4_1.text_input("인원 수 (변경 전)")
         count_after = r4_2.text_input("인원 수 (변경 후)")
 
-        # [수정됨] 수행 인력 - 텍스트 입력 대신 선택 박스로 변경
         r5_1, r5_2 = st.columns(2)
         doctor_list = ["선택안함", "유민상", "최윤범", "안형숙"]
         staff_before = r5_1.selectbox("수행 인력 (변경 전)", doctor_list)
@@ -450,7 +473,6 @@ with tab2:
             fix_pdf_bytes = create_fix_pdf(fix_data)
             
             if fix_pdf_bytes:
-                # 탭2 전용 병합 함수 사용 ('staff_after'를 넘겨서 면허증 자동 매칭)
                 merged_bytes = merge_documents_fix(fix_pdf_bytes, staff_after)
                 
                 if merged_bytes:
