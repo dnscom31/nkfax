@@ -17,7 +17,7 @@ TEMPLATE_FIX_PATH = "background_fix001-001.png"  # 변경/취소 신청서 배�
 FILE_LICENSE = "개설허가증.pdf"
 FILE_SPECIAL_CERT = "특수의료기관지정서.jpg"
 
-# 의사별 면허증 매칭
+# 의사별 면허증 매칭 (파일명 확인 필수)
 DOCTOR_MAP = {
     "선택안함": None,
     "유민상": "유민상.pdf",
@@ -66,15 +66,6 @@ FAX_BOOK = {
     "양주시": "0505-041-1924"
 }
 
-# --- 팩스 번호 업데이트 콜백 ---
-def update_fax_tab1():
-    if st.session_state.tab1_org in FAX_BOOK:
-        st.session_state.tab1_fax = FAX_BOOK[st.session_state.tab1_org]
-
-def update_fax_tab2():
-    if st.session_state.tab2_org in FAX_BOOK:
-        st.session_state.tab2_fax = FAX_BOOK[st.session_state.tab2_org]
-
 def add_text_to_image(draw, text, position, font_size=20, color="black"):
     if not text: return
     try:
@@ -84,44 +75,64 @@ def add_text_to_image(draw, text, position, font_size=20, color="black"):
     draw.text(position, str(text), fill=color, font=font)
 
 def create_report_pdf(data):
-    """(탭1) 건강검진 신고서 생성"""
+    """신고서 표지 생성 (A4 리사이징 포함)"""
     try:
         image = Image.open(TEMPLATE_PATH).convert("RGB")
-        image = image.resize((1240, 1754))
+        image = image.resize((1240, 1754)) # 표준 A4 픽셀
         draw = ImageDraw.Draw(image)
         
-        # 1. 목적 (일시 바로 위)
+        # 1. 접수일 입력 삭제됨
+        
+        # 2. 내용 입력 (좌표는 사용자 수정본 기준)
+        
+        # 목적 (New: 일시 바로 위) - 추정 좌표 (320, 455)
         add_text_to_image(draw, data['purpose'], (320, 455))
 
-        # 2. 일시/시간/장소/대상/인원/의사
+        # 일시
         target_date_str = data['checkup_date'].strftime("%Y년 %m월 %d일")
         add_text_to_image(draw, target_date_str, (320, 490))
+
+        # 시간
         time_str = f"{data['start_time'].strftime('%H:%M')} ~ {data['end_time'].strftime('%H:%M')}"
         add_text_to_image(draw, time_str, (320, 530))
+
+        # 주소 (장소)
         add_text_to_image(draw, data['location'], (750, 490))
+
+        # 업체명 (대상)
         add_text_to_image(draw, data['target'], (320, 565))
+
+        # 인원
         add_text_to_image(draw, f"{data['count']}명", (930, 565))
-        add_text_to_image(draw, data['doctor_name'], (620, 755))
         
-        # 3. 체크박스 자동화
+        # --- [자동화] 체크박스 로직 ---
+        # 대상(Y=565)과 의사(Y=755) 사이의 공간에 체크박스 위치
+        # 체크박스 1: 국가건강검진 (추정 Y: 665)
+        # 체크박스 2: 법령 외 검진 (추정 Y: 695)
+        
         purpose = data['purpose']
-        check_national = False
-        check_other = False
+        check_national = False # 국가건강검진
+        check_other = False    # 그 외 법령
         
         if purpose == "출장 일반검진":
             check_national = True
         elif purpose == "출장 일반검진+특수검진":
             check_national = True
             check_other = True
-        else: # 특수검진 or 보건예방
+        else:
+            # 특수검진 또는 보건예방사업검진
             check_other = True
             
         if check_national:
             add_text_to_image(draw, "V", (322, 665), font_size=22, color="red")
+            
         if check_other:
             add_text_to_image(draw, "V", (322, 695), font_size=22, color="red")
 
-        # 4. 하단 날짜 (유태전 서명 위)
+        # 의사명
+        add_text_to_image(draw, data['doctor_name'], (620, 755))
+        
+        # 3. 하단 날짜 (유태전 서명 위) - 사용자 수정본 좌표 유지
         today = datetime.now()
         add_text_to_image(draw, str(today.year), (870, 1032), font_size=18)
         add_text_to_image(draw, str(today.month), (980, 1032), font_size=18)
@@ -135,41 +146,21 @@ def create_report_pdf(data):
         return None
 
 def create_fix_pdf(data):
-    """(탭2) 변경/취소 신청서 생성 (좌표 수정됨)"""
+    """변경/취소 신청서 생성 (A4 리사이징 포함)"""
     try:
         image = Image.open(TEMPLATE_FIX_PATH).convert("RGB")
         image = image.resize((1240, 1754))
         draw = ImageDraw.Draw(image)
         
-        # [수정] 체크박스: X(-10)=705, Y(+50)=135/175
         if data['type'] == 'change':
-            add_text_to_image(draw, "V", (705, 135), font_size=30, color="red")
+            add_text_to_image(draw, "V", (715, 85), font_size=30, color="red")
         else:
-            add_text_to_image(draw, "V", (705, 175), font_size=30, color="red")
+            add_text_to_image(draw, "V", (715, 125), font_size=30, color="red")
 
-        # [수정] 테이블 행 좌표 (요청하신 계산식 적용)
-        # 일시: 730 + 40 = 770
-        # 장소: 730 + 70 = 800
-        # 대상: 중간값 855
-        # 인원: 890 + 15 = 905
-        # 수행: 유지 970
-        # 항목: 유지 1050
-        # 기타: 1130 - 10 = 1120
-        
-        rows_y = {
-            'date': 770,
-            'place': 800,
-            'target': 855,
-            'count': 905,
-            'staff': 970,
-            'items': 1050,
-            'etc': 1120
-        }
-        
         col_before_x = 400
         col_after_x = 850
+        rows_y = {'date': 650, 'place': 730, 'target': 810, 'count': 890, 'staff': 970, 'items': 1050, 'etc': 1130}
         
-        # 일반 항목 입력
         items = ['date', 'place', 'target', 'count', 'items', 'etc']
         for item in items:
             y_pos = rows_y[item]
@@ -178,7 +169,6 @@ def create_fix_pdf(data):
             if before_val: add_text_to_image(draw, before_val, (col_before_x, y_pos))
             if after_val: add_text_to_image(draw, after_val, (col_after_x, y_pos))
 
-        # 수행 인력 (Staff)
         staff_y = rows_y['staff']
         if data['staff_before'] and data['staff_before'] != "선택안함":
              add_text_to_image(draw, data['staff_before'], (col_before_x, staff_y))
@@ -186,11 +176,10 @@ def create_fix_pdf(data):
         if data['staff_after'] and data['staff_after'] != "선택안함":
              add_text_to_image(draw, data['staff_after'], (col_after_x, staff_y))
 
-        # 취소 사유
         if data['type'] == 'cancel':
             add_text_to_image(draw, data['cancel_reason'], (300, 1300))
 
-        # [복구] 하단 날짜 (사용자님께서 맞춰두신 좌표 Y=1430 원복)
+        # 하단 날짜 (사용자 수정본 좌표)
         today = datetime.now()
         add_text_to_image(draw, str(today.year), (870, 1430), font_size=22)
         add_text_to_image(draw, str(today.month), (990, 1430), font_size=22)
@@ -204,7 +193,7 @@ def create_fix_pdf(data):
         return None
 
 def merge_documents_report(cover_pdf_bytes, doctor_name):
-    """(탭1) 신고서용 병합"""
+    """(탭1) 건강검진 신고서용 병합"""
     merger = PdfWriter()
     try:
         merger.append(PdfReader(BytesIO(cover_pdf_bytes)))
@@ -255,7 +244,7 @@ def merge_documents_fix(cover_pdf_bytes, doctor_name_after):
         return None
 
 def upload_file_to_ftp(pdf_bytes, filename):
-    """FTP 업로드"""
+    """FTP 업로드 (Passive Mode)"""
     try:
         ftp_host = st.secrets["BAROBILL_FTP_HOST"]
         ftp_port = int(st.secrets["BAROBILL_FTP_PORT"])
@@ -273,7 +262,7 @@ def upload_file_to_ftp(pdf_bytes, filename):
         return False, f"FTP 업로드 실패: {e}"
 
 def send_fax_from_ftp_real(filename, receiver_num, sender_num):
-    """바로빌 전송"""
+    """바로빌 API 전송 요청"""
     try:
         if "BAROBILL_CERT_KEY" not in st.secrets:
             return False, "API 키(Secrets)가 설정되지 않았습니다."
@@ -312,23 +301,21 @@ def send_fax_from_ftp_real(filename, receiver_num, sender_num):
 st.set_page_config(page_title="출장검진 팩스 시스템", layout="wide")
 st.title("🏥 뉴고려병원 출장검진 팩스 시스템")
 
-# Session State 초기화
 if 't1_pdf' not in st.session_state: st.session_state['t1_pdf'] = None
 if 't1_meta' not in st.session_state: st.session_state['t1_meta'] = {}
 if 't2_pdf' not in st.session_state: st.session_state['t2_pdf'] = None
 if 't2_meta' not in st.session_state: st.session_state['t2_meta'] = {}
 
-# 팩스번호 상태 초기화
-if 'tab1_fax' not in st.session_state: st.session_state.tab1_fax = ""
-if 'tab2_fax' not in st.session_state: st.session_state.tab2_fax = ""
-
 tab1, tab2 = st.tabs(["📑 출장검진 신고서", "📝 변경/취소 신청서"])
 
-# 탭 1
+# ==========================================
+# 탭 1: 기존 출장검진 신고서
+# ==========================================
 with tab1:
     with st.form("report_form"):
         st.subheader("1. 신고서 내용 작성")
         
+        # [신규] 목적 선택
         purpose_options = [
             "출장 일반검진+특수검진", 
             "출장 일반검진", 
@@ -352,9 +339,9 @@ with tab1:
         st.subheader("2. 발송 정보")
         rc1, rc2 = st.columns(2)
         with rc1:
-            selected_org = st.selectbox("수신처(보건소)", list(FAX_BOOK.keys()), key="tab1_org", on_change=update_fax_tab1)
+            selected_org = st.selectbox("수신처(보건소)", list(FAX_BOOK.keys()), key="tab1_org")
         with rc2:
-            receiver_fax = st.text_input("수신 팩스번호", key="tab1_fax")
+            receiver_fax = st.text_input("수신 팩스번호", value=FAX_BOOK[selected_org], key="tab1_fax")
         sender_fax = st.text_input("발신 팩스번호", "031-987-7777", key="tab1_sender")
         
         submit_preview = st.form_submit_button("1단계: 문서 생성 및 미리보기")
@@ -364,7 +351,7 @@ with tab1:
             st.warning("수신번호를 입력하세요.")
         else:
             data = {
-                'purpose': purpose,
+                'purpose': purpose, # 추가됨
                 'checkup_date': checkup_date,
                 'start_time': start_time, 'end_time': end_time,
                 'location': location, 'target': target,
@@ -409,7 +396,9 @@ with tab1:
                     else:
                         st.error(ftp_msg)
 
-# 탭 2
+# ==========================================
+# 탭 2: 변경/취소 신청서
+# ==========================================
 with tab2:
     st.info("💡 변경 사항이 있는 항목만 입력하세요.")
     
@@ -442,6 +431,7 @@ with tab2:
         doctor_list = ["선택안함", "유민상", "최윤범", "안형숙"]
         staff_before = r5_1.selectbox("수행 인력 (변경 전)", doctor_list)
         staff_after = r5_2.selectbox("수행 인력 (변경 후)", doctor_list)
+        st.caption("※ '변경 후' 인력을 선택하면 해당 의사의 면허증이 자동 첨부됩니다.")
 
         r6_1, r6_2 = st.columns(2)
         items_before = r6_1.text_input("실시 항목 (변경 전)")
@@ -457,9 +447,9 @@ with tab2:
         st.subheader("발송 정보")
         fc1, fc2 = st.columns(2)
         with fc1:
-            fix_org = st.selectbox("수신처(보건소)", list(FAX_BOOK.keys()), key="tab2_org", on_change=update_fax_tab2)
+            fix_org = st.selectbox("수신처(보건소)", list(FAX_BOOK.keys()), key="tab2_org")
         with fc2:
-            fix_fax = st.text_input("수신 팩스번호", key="tab2_fax")
+            fix_fax = st.text_input("수신 팩스번호", value=FAX_BOOK[fix_org], key="tab2_fax")
         fix_sender = st.text_input("발신 팩스번호", "031-987-7777", key="tab2_sender")
 
         submit_fix_preview = st.form_submit_button("1단계: 문서 생성 및 미리보기")
@@ -484,6 +474,7 @@ with tab2:
             
             if fix_pdf_bytes:
                 merged_bytes = merge_documents_fix(fix_pdf_bytes, staff_after)
+                
                 if merged_bytes:
                     st.session_state['t2_pdf'] = merged_bytes
                     st.session_state['t2_meta'] = {
