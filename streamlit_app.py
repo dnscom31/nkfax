@@ -20,7 +20,7 @@ FILE_SPECIAL_CERT = "특수의료기관지정서.jpg"
 # 의사별 면허증 매칭
 DOCTOR_MAP = {
     "선택안함": None,
-    "유민상": "유민상.pdf",
+    "김우진": "김우진.pdf",
     "최윤범": "최윤범.pdf",
     "안형숙": "안형숙.pdf"
 }
@@ -341,7 +341,7 @@ with tab1:
         location = st.text_input("장소", "주소입력")
         target = st.text_input("대상", "업체명 입력")
         count = st.number_input("인원 수", value=50)
-        doctor_name = st.selectbox("담당 의사", ["유민상", "최윤범", "안형숙"])
+        doctor_name = st.selectbox("담당 의사", ["김우진", "최윤범", "안형숙"])
 
     st.markdown("---")
     st.subheader("2. 발송 정보")
@@ -436,7 +436,7 @@ with tab2:
     count_after = r4_2.text_input("인원 수 (변경 후)")
 
     r5_1, r5_2 = st.columns(2)
-    doctor_list = ["선택안함", "유민상", "최윤범", "안형숙"]
+    doctor_list = ["선택안함", "김우진", "최윤범", "안형숙"]
     staff_before = r5_1.selectbox("수행 인력 (변경 전)", doctor_list)
     staff_after = r5_2.selectbox("수행 인력 (변경 후)", doctor_list)
 
