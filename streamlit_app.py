@@ -13,6 +13,15 @@ FONT_PATH = "NanumGothic.ttf"
 TEMPLATE_PATH = "background-001.png"             # 건강검진 신고서 배경
 TEMPLATE_FIX_PATH = "background_fix001-001.png"  # 변경/취소 신청서 배경
 
+# 배경 이미지에 고정 인쇄된 '김포시 보건소장 귀하'를 지우고
+# 선택된 수신처명을 입력할 영역(이미지 리사이즈 후 1240 x 1754 기준)
+REPORT_RECIPIENT_CLEAR_BOX = (115, 1190, 700, 1229)
+REPORT_RECIPIENT_TEXT_POS = (130, 1191)
+FIX_RECIPIENT_CLEAR_BOX = (115, 1510, 800, 1553)
+FIX_RECIPIENT_TEXT_POS = (250, 1512)
+RECIPIENT_FONT_SIZE = 26
+RECIPIENT_MIN_FONT_SIZE = 18
+
 # 고정 첨부 파일
 FILE_LICENSE = "개설허가증.pdf"
 FILE_SPECIAL_CERT = "특수의료기관지정서.jpg"
@@ -75,6 +84,37 @@ def update_fax_tab2():
     if st.session_state.tab2_org in FAX_BOOK:
         st.session_state.tab2_fax = FAX_BOOK[st.session_state.tab2_org]
 
+def format_recipient_title(org_name):
+    """선택된 수신처를 'OO 보건소장 귀하' 형식으로 변환"""
+    if not org_name or org_name == "직접 입력":
+        return "보건소장 귀하"
+
+    org_name = str(org_name).strip()
+    if org_name.endswith("보건소"):
+        return f"{org_name}장 귀하"
+    return f"{org_name} 보건소장 귀하"
+
+def draw_recipient_title(draw, org_name, clear_box, text_position):
+    """배경의 기존 수신처 문구를 지우고 선택된 수신처명을 입력"""
+    title = format_recipient_title(org_name)
+    draw.rectangle(clear_box, fill="white")
+
+    max_width = clear_box[2] - text_position[0] - 10
+    font = None
+    for font_size in range(RECIPIENT_FONT_SIZE, RECIPIENT_MIN_FONT_SIZE - 1, -1):
+        try:
+            candidate_font = ImageFont.truetype(FONT_PATH, font_size)
+        except Exception:
+            candidate_font = ImageFont.load_default()
+
+        text_box = draw.textbbox((0, 0), title, font=candidate_font)
+        text_width = text_box[2] - text_box[0]
+        font = candidate_font
+        if text_width <= max_width:
+            break
+
+    draw.text(text_position, title, fill="black", font=font)
+
 def add_text_to_image(draw, text, position, font_size=20, color="black"):
     if not text: return
     try:
@@ -89,6 +129,14 @@ def create_report_pdf(data):
         image = Image.open(TEMPLATE_PATH).convert("RGB")
         image = image.resize((1240, 1754))
         draw = ImageDraw.Draw(image)
+
+        # 선택된 수신처 보건소장 문구 적용
+        draw_recipient_title(
+            draw,
+            data.get('receiver_org', ''),
+            REPORT_RECIPIENT_CLEAR_BOX,
+            REPORT_RECIPIENT_TEXT_POS
+        )
         
         # 1. 목적 (일시 바로 위)
         add_text_to_image(draw, data['purpose'], (320, 455))
@@ -140,6 +188,14 @@ def create_fix_pdf(data):
         image = Image.open(TEMPLATE_FIX_PATH).convert("RGB")
         image = image.resize((1240, 1754))
         draw = ImageDraw.Draw(image)
+
+        # 선택된 수신처 보건소장 문구 적용
+        draw_recipient_title(
+            draw,
+            data.get('receiver_org', ''),
+            FIX_RECIPIENT_CLEAR_BOX,
+            FIX_RECIPIENT_TEXT_POS
+        )
         
         # [체크박스] - 위치 수정하려면 여기 좌표를 변경하세요
         if data['type'] == 'change':
@@ -238,7 +294,7 @@ def merge_documents_fix(cover_pdf_bytes, doctor_name_after):
             img_pdf_buffer = BytesIO()
             Image.open(FILE_SPECIAL_CERT).convert('RGB').save(img_pdf_buffer, format="PDF")
             merger.append(PdfReader(img_pdf_buffer))
-
+        
         output_buffer = BytesIO()
         merger.write(output_buffer)
         return output_buffer.getvalue()
@@ -363,7 +419,8 @@ with tab1:
                 'checkup_date': checkup_date,
                 'start_time': start_time, 'end_time': end_time,
                 'location': location, 'target': target,
-                'count': count, 'doctor_name': doctor_name
+                'count': count, 'doctor_name': doctor_name,
+                'receiver_org': selected_org
             }
             cover_bytes = create_report_pdf(data)
             if cover_bytes:
@@ -474,7 +531,8 @@ with tab2:
                 'staff_before': staff_before, 'staff_after': staff_after,
                 'items_before': items_before, 'items_after': items_after,
                 'etc_before': etc_before, 'etc_after': etc_after,
-                'cancel_reason': cancel_reason
+                'cancel_reason': cancel_reason,
+                'receiver_org': fix_org
             }
             
             fix_pdf_bytes = create_fix_pdf(fix_data)
